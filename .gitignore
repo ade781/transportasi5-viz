@@ -1,0 +1,59 @@
+# ------------------------------
+# OS / Editor
+# ------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+.vscode/
+.idea/
+*.code-workspace
+
+# ------------------------------
+# Logs / Env
+# ------------------------------
+*.log
+.env
+.env.*
+
+# ------------------------------
+# Python
+# ------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# ------------------------------
+# R
+# ------------------------------
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+.Renviron
+
+# ------------------------------
+# Node / Frontend
+# ------------------------------
+node_modules/
+dist/
+build/
+.vite/
+
+# ------------------------------
+# Project outputs
+# ------------------------------
+r-gmm/hasil/
+r-gmm/visualisasi/
+r-arm/hasil/
+
+# ------------------------------
+# Data files (not tracked)
+# ------------------------------
+*.csv
+*.parquet
+*.feather
+*.rds

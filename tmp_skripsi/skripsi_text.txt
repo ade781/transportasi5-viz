@@ -1,0 +1,1006 @@
+﻿PENERAPAN GAUSSIAN MIXTURE MODEL DAN ASSOCIATION RULE MINING UNTUK ANALISIS POLA MOBILITAS PENUMPANG TRANSJAKARTA
+Disusun oleh
+Nama/Nim
+: Arya Ade Wiguna (123220058)
+PROGRAM STUDI TEKNIK INFORMATIKA
+JURUSAN INFORMATIKA
+FAKULTAS TEKNIK INDUSTRI
+ UNIVERSITAS PEMBANGUNAN NASIONAL “VETERAN” YOGYAKARTA
+2026
+DAFTAR ISI
+DAFTAR ISI1
+BAB I PENDAHULUAN3
+1.1Latar Belakang Masalah3
+1.2Rumusan Masalah5
+1.3Batasan Penelitian5
+1.4Tujuan Penelitian5
+1.5Manfaat Penelitian6
+1.6Metodologi Penelitian6
+1.7Sistematika Penulisan6
+BAB II TINJAUAN LITERATUR8
+2.1Penelitian Terdahulu8
+2.2Konsep Mobilitas Penumpang Transportasi Publik9
+2.3Kriteria dan Perencanaan Rute Angkutan Umum11
+2.4 Data Tap In dan Tap Out Transjakarta11
+2.5Data Mining12
+2.6Clustering13
+2.7Gaussian Mixture Model14
+2.7.1 Estimasi Parameter Menggunakan Expectation-Maximization15
+2.7.2 Struktur Matriks Kovarians dalam Gaussian Mixture Model16
+2.8Association Rule Mining18
+2.8.1 Metrik Support, Confidence, dan Lift18
+2.8.2 Algoritma FP-Growth19
+2.9Kombinasi Gaussian Mixture Model dan Association Rule Mining20
+2.10Kerangka Pemikiran Penelitian22
+BAB III METODOLOGI PENELITIAN23
+3.1 Kerangka Penelitian23
+3.2 Sumber and Karakteristik Data24
+3.3 Data Preparation26
+3.3.1 Data Quality Assessment27
+3.3.2 Transformasi Variabel Waktu28
+3.3.3 Filter Durasi Perjalanan29
+3.3.4 Filter Jam Operasional29
+3.3.5 Feature Engineering30
+3.3.6 Imputasi Nilai Hilang30
+3.3.7 Pembersihan Data dan Outlier31
+3.3.8 Normalisasi Variabel31
+3.4 Pemodelan Gaussian Mixture Model (GMM)32
+3.4.1 Representasi Data untuk Pemodelan34
+3.4.3 Estimasi Parameter Menggunakan Expectation-Maximization (EM)35
+3.4.4 Seleksi Model dan Penentuan Jumlah Cluster Optimal36
+3.4.5 Penugasan Cluster Probabilistik37
+3.4.6 Evaluasi Kualitas Clustering37
+3.4.7 Output Pemodelan dan Interpretasi Cluster38
+3.5 Association Rule Mining (ARM)39
+3.5.1 Representasi Data Transaksi40
+3.5.3 Pembentukan Transactions Object42
+3.5.4 Analisis Frekuensi Item43
+3.5.5 Penerapan Algoritma FP-Growth44
+3.5.6 Evaluasi Association Rules45
+3.5.7 Analisis Pola Asosiasi Per Cluster45
+3.6 Analisis Integratif45
+3.7 Perangkat dan Lingkungan Implementasi45
+DAFTAR GAMBAR
+Gambar 2. 1 Ellipses of Isodensity pada Berbagai Model Kovarians Gaussian Mixture Model19
+Gambar 3. 1 Alur Penelitian25
+Gambar 3. 2 Diagram Alur Data Preparation menggambarkan tahapan pengolahan data.29
+Gambar 3. 3 Diagram Alur Pemodelan Gaussian Mixture Model (GMM)35
+Gambar 3. 4 Proses Iteratif Algoritma Expectation-Maximization37
+Gambar 3. 5 Diagram Alur Association Rule Mining Menggunakan Algoritma FP-Growth42
+Tabel 3. 1 Struktur Atribut Dataset27
+Tabel 3. 2 contoh data dari data raw27
+Tabel 3. 3 Ilustrasi Kondisi Dataset Awal30
+Tabel 3. 4 Contoh Transformasi Variabel Waktu30
+Tabel 3. 5 Contoh Filter Durasi Perjalanan31
+Tabel 3. 6 Contoh Filter Jam Operasional31
+Tabel 3. 7 Contoh Variabel Hasil Rekayasa Fitur32
+Tabel 3. 8 Contoh Proses Imputasi32
+Tabel 3. 9 Contoh Normalisasi Variabel33
+Tabel 3. 10 Contoh Hasil Data Preparation34
+Tabel 3. 11 Variabel Pemodelan GMM36
+Tabel 3. 12 Spesifikasi Eksperimen GMM36
+Tabel 3. 13 Ilustrasi Evaluasi Model Berbasis Bayesian Information Criterion38
+Tabel 3. 14 Ilustrasi Probabilitas Keanggotaan Cluster39
+Tabel 3. 15 Ilustrasi Evaluasi Kualitas Clustering40
+Tabel 3. 16 Ilustrasi Ringkasan Karakteristik Cluster40
+Tabel 3. 17 Ilustrasi Struktur Data Transaksi43
+Tabel 3. 18 Ilustrasi Struktur Data Basket43
+Tabel 3. 19 Ilustrasi Representasi Transactions Object44
+Tabel 3. 20 Ilustrasi Data Transaksi46
+Tabel 3. 21 Ilustrasi Frequent Itemsets46
+BAB I PENDAHULUAN
+Latar Belakang Masalah
+Mobilitas Mobilitas masyarakat di wilayah perkotaan seperti DKI Jakarta terus meningkat seiring dengan pertumbuhan aktivitas ekonomi dan kepadatan lalu lintas. Berdasarkan Statistik Transportasi Provinsi DKI Jakarta 2023 yang diterbitkan oleh Badan Pusat Statistik (BPS, 2024), total panjang jalan di wilayah DKI Jakarta hanya sekitar 6.492 kilometer, sedangkan jumlah kendaraan bermotor yang terdaftar telah mencapai lebih dari 23 juta unit. Ketimpangan antara kapasitas infrastruktur jalan dengan jumlah kendaraan ini menyebabkan beban lalu lintas semakin berat dan kemacetan menjadi permasalahan kronis di ibu kota. Kondisi tersebut menegaskan pentingnya pengelolaan sistem transportasi publik yang efisien dan berbasis data untuk mendukung mobilitas masyarakat secara berkelanjutan.
+Salah satu moda transportasi publik utama di ibu kota adalah TransJakarta, sistem bus rapid transit (BRT) yang menjadi tulang punggung mobilitas warga. Berdasarkan laporan resmi PT Transportasi Jakarta (2024), total penumpang TransJakarta sepanjang tahun 2023 mencapai sekitar 371 juta orang, dengan rata-rata pengguna harian lebih dari satu juta penumpang. Angka ini menunjukkan peran vital TransJakarta dalam mengurangi beban lalu lintas dan mendukung transportasi perkotaan yang berkelanjutan. Namun, data operasional memperlihatkan adanya ketimpangan antara beban rute dan waktu perjalanan. Beberapa halte mengalami kepadatan ekstrem pada jam-jam sibuk, sementara halte lainnya relatif sepi. Fenomena ini mengindikasikan adanya variasi perilaku mobilitas penumpang yang kompleks dan belum sepenuhnya dipahami oleh pengelola layanan.
+Berbagai penelitian sebelumnya telah berupaya memetakan pola mobilitas penumpang TransJakarta melalui pendekatan data mining. (Reynaldi et al., 2025) menerapkan algoritma K-Means Clustering pada 189.501 data transaksi tap-in dan tap-out untuk menganalisis penyebaran spasial pengguna TransJakarta. Hasilnya menunjukkan terbentuknya empat klaster utama yang merepresentasikan variasi waktu perjalanan berdasarkan dimensi spasial dan temporal, namun Namun, pendekatan tersebut menghasilkan segmentasi deterministik dan belum dilanjutkan dengan analisis pola keterkaitan perjalanan antar rute pada setiap segmen yang terbentuk.
+Sementara itu, (Siti Marhamatul Lathifah, 2023) menganalisis pengaruh faktor sosial dan ekonomi terhadap pola pengguna TransJakarta dengan metode Association Rule Mining (ARM) menggunakan perangkat Orange Data Mining. Hasil penelitiannya menghasilkan 13 pola asosiasi yang menunjukkan keterkaitan antara faktor usia, pekerjaan, frekuensi penggunaan, dan persepsi terhadap fasilitas TransJakarta dengan preferensi moda transportasi
+Namun, penelitian tersebut belum memasukkan dimensi spasial dan temporal dari data perjalanan, sehingga pola mobilitas yang dihasilkan terbatas pada aspek demografis.Dari sisi algoritmik, penelitian oleh (Nur Agung, 2025) membuktikan kemampuan Gaussian Mixture Models (GMM) dalam menangkap distribusi data yang kompleks dengan menghasilkan 10 klaster optimal dari data tekanan mesin industri berdasarkan kriteria Bayesian Information Criterion (BIC), membuktikan bahwa GMM mampu melakukan pemodelan probabilistik terhadap data yang tidak terpisah secara tegas
+Pendekatan probabilistik ini juga diperkuat oleh (Nasution et al., 2025) yang memperoleh nilai Silhouette Score sebesar 0,58, menunjukkan performa clustering yang baik dalam mengidentifikasi pola kesalahan kompilasi dengan GMM
+Penelitian lain oleh (Naufal Farras Deofanny et al., 2024) menemukan bahwa model GMM dengan empat komponen memberikan hasil terbaik untuk distribusi kecepatan angin dengan nilai BIC terendah (33814.149), menegaskan fleksibilitas GMM untuk data yang memiliki variasi kontinu.
+Dalam konteks Association Rule Mining, penelitian(Diah Ayu Nugrahanti, 2022) membuktikan efektivitas algoritma FP-Growth dalam mengekstraksi hubungan kata pada data tweet bertema terorisme di Twitter, menghasilkan 75 aturan asosiasi dengan minimum support 0.05 dan confidence 0.9. Hasil tersebut menegaskan bahwa ARM mampu menemukan hubungan tersembunyi dalam data besar dengan efisiensi tinggi.
+Dari berbagai penelitian tersebut dapat disimpulkan bahwa model K-Means mampu menggambarkan pola spasial dasar, tetapi tidak cukup fleksibel untuk data perilaku penumpang yang dinamis. Sebaliknya, Gaussian Mixture Models memungkinkan pembentukan klaster yang bersifat probabilistik dan adaptif terhadap variasi temporal dan spasial, sedangkan Association Rule Mining efektif dalam mengungkap relasi tersembunyi antar atribut dalam setiap segmen penumpang. Kombinasi keduanya berpotensi memberikan pemahaman yang lebih komprehensif terhadap pola mobilitas penumpang TransJakartabaik dari sisi segmentasi perilaku maupun relasi antar rute.
+Oleh karena itu, penelitian ini menggunakan kombinasi Gaussian Mixture Models (GMM) dan Association Rule Mining (ARM) untuk menganalisis data tap-in dan tap-out TransJakarta. GMM digunakan untuk membentuk klaster probabilistik berdasarkan pola perjalanan spasial dan temporal, sementara ARM digunakan untuk mengekstraksi hubungan antarhalte dan rute dalam setiap klaster. Pendekatan ini diharapkan dapat memberikan kontribusi empiris bagi pengembangan kebijakan transportasi publik berbasis data di wilayah perkotaan padat seperti Jakarta, sekaligus memperkaya literatur dalam penerapan data mining pada bidang transportasi).
+Rumusan Masalah
+Pemetaan pola mobilitas penumpang TransJakarta dengan model deterministik menghasilkan segementasi yang kaku dan belum dapat menggambarkan dinamika perilaku pengguna secara probabilistik.Akibatnya, pola pergerakan penumpang dalam sistem TransJakarta masih belum dapat dipahami secara utuh.
+Batasan Penelitian
+Penelitian ini memiliki batasan:
+Data yang digunakan merupakan dataset publik TransJakarta berupa data Tap In–Tap Out yang telah melalui proses anonimisasi dan bersifat representatif, sehingga tidak mencerminkan data operasional mentah secara penuh.
+Cakupan analisis dibatasi pada periode waktu tertentu, yaitu bulan hari operasional, sehingga penelitian ini tidak membahas pola mobilitas jangka panjang maupun tren musiman penumpang.
+Analisis mobilitas penumpang difokuskan pada pasangan Origin–Destination (OD) berdasarkan halte tap-in dan tap-out dalam sistem TransJakarta, tanpa mempertimbangkan perpindahan moda transportasi lain di luar sistem tersebut.
+Metode analisis dibatasi pada pendekatan eksploratif dengan menggunakan Gaussian Mixture Models (GMM) untuk segmentasi probabilistik dan Association Rule Mining (ARM) untuk mengidentifikasi pola keterkaitan rute perjalanan, sehingga hasil penelitian tidak dimaksudkan untuk penetapan kebijakan operasional secara langsung.
+Tujuan Penelitian
+Penelitian ini bertujuan untuk:
+Menganalisis dan mengidentifikasi pola mobilitas penumpang TransJakarta berdasarkan data Tap In–Tap Out yang merepresentasikan perilaku perjalanan secara spasial dan temporal.
+Menerapkan kombinasi metode Gaussian Mixture Models dan Association Rule Mining sebagai pendekatan analisis terpadu untuk melakukan segmentasi penumpang secara probabilistik sekaligus mengekstraksi hubungan rute perjalanan antar halte.
+Menghasilkan model analisis pola mobilitas penumpang yang dapat digunakan sebagai dasar awal dalam memahami kecenderungan pergerakan penumpang Transjakarta.
+Manfaat Penelitian
+Penelitian ini diharapkan memberikan beberapa manfaat sebagai berikut:
+Memberikan kontribusi akademik dalam pengembangan kajian data mining transportasi dengan memperkenalkan pendekatan analisis terpadu yang mengombinasikan Gaussian Mixture Models dan Association Rule Mining untuk memodelkan pola mobilitas penumpang secara probalistik berbasis dimensi spasial dan temporal.
+Menyediakan hasil analisis berupa segmentasi probabilistic dan pola keterkkaitan Origin-destination (OD) antar halte yang dapat digunakan sebagai informasi pendukung dalam memahami karakteristik mobilitas penumpang Transjakarta, khususnya pada periode waktu tertentu.
+Menjadi referensi bagi penelitian selanjutnya yang mengkaji mobilitas transportasi public dengan pendekatan probalbilistik dan eksploratif, serta mendorong pengembangan metode analisis yang melampaui clustering deterministic seperti K-means.
+Metodologi Penelitian
+Penelitian ini dilakukan untuk menganalisis pola mobilitas penumpang TransJakarta melalui tahapan yang disusun secara sistematis. Adapun tahapan penelitian yang dilakukan adalah sebagai berikut:
+Pengumpulan Data
+Tahap awal dilakukan dengan mengumpulkan dataset publik transaksi TransJakarta (tap-in dan tap-out) yang diperoleh dari platform Kaggle. Dataset mencakup informasi lokasi halte, waktu perjalanan, serta atribut lain yang relevan dengan analisis mobilitas.
+Data Preparation
+Data yang telah diperoleh kemudian melalui proses persiapan yang meliputi pembersihan data (data cleaning), penanganan nilai hilang (missing value), transformasi variabel waktu ke bentuk numerik, rekayasa fitur (feature engineering), serta normalisasi variabel kontinu agar sesuai untuk pemodelan statistik.
+Segmentasi Probabilistik menggunakan Gaussian Mixture Model (GMM)
+Data yang telah diproses dianalisis menggunakan Gaussian Mixture Model untuk membentuk segmentasi mobilitas secara probabilistik. Penentuan jumlah klaster optimal dilakukan menggunakan kriteria Bayesian Information Criterion (BIC). Tahap ini menghasilkan probabilitas keanggotaan setiap observasi terhadap klaster yang terbentuk.
+Analisis Pola Perjalanan menggunakan Association Rule Mining (ARM)
+Setelah segmentasi terbentuk, dilakukan analisis keterkaitan perjalanan antar rute menggunakan algoritma FP-Growth. Aturan asosiasi dievaluasi menggunakan metrik support, confidence, dan lift untuk mengidentifikasi pola perjalanan dominan pada setiap segmen mobilitas.
+Analisis dan Interpretasi Hasil
+Hasil segmentasi probabilistik dan aturan asosiasi dianalisis secara integratif untuk mengidentifikasi karakteristik mobilitas penumpang berdasarkan dimensi spasial dan temporal, serta hubungan antar rute dalam setiap segmen.
+Metodologi ini dirancang untuk menghasilkan pemahaman mobilitas penumpang yang tidak hanya berbasis segmentasi distribusi, tetapi juga mencakup analisis pola perjalanan secara sistematis.
+Sistematika Penulisan
+Sistematika penulisan yang digunakan dalam menyusun laporan penelitian ini terbagi ke dalam 5 bab yaitu:
+BAB 1
+PENDAHULUAN
+Bab ini imemuat penjelasan mengenai penelitian yang dilakukan dan alasan dilaksanakannya penelitian tersebut, yang meliputi latar belakang penelitian, perumusan masalah, tujuan penelitian, manfaat penelitian, serta sistematika penulisan.
+BAB 2
+TINJAUAN LITERATUR
+Bab ini memuat pembahasan mengenai pandangan dan hasil penelitian terdahulu yang berkaitan dengan permasalahan penelitian yang serupa, serta konsep, teori, dan fakta pada domain ilmu informatika yang mendukung penelitian yang dilakukan.
+BAB 3
+METODOLOGI PENELITIAN
+Bab ini menjelaskan perancangan dan pelaksaan penelitian, yang mencakup rancangan akuisisi data, proses pengolahan data, metode analisis yang digunakan, serta teknik pengujian atau validasi terhadap hasil penelitian.
+BAB 4
+HASIL DAN PEMBAHASAN
+Bab ini menyajikan hasil yang diperolah dari penelitian yang dilakukan serta pembahasa terhadap makna dan interpretasi dari hasil tersebut berdasarkan tujuan penelitian. 
+BAB 5
+PENUTUP
+Bab ini berisi Kesimpulan yang merangkum capaian penelitian secara singkat, evaluasi kesesuaian hasil dengan tujuan penilitan, serta saran terkait keterbatasan penelitian dan kemungkinan pengembangan lebih lanjut. 
+BAB II TINJAUAN LITERATUR
+Penelitian Terdahulu
+Tabel 2. 1 Penelitian Terdahulu
+No
+Judul
+Penulis
+Metode
+Hasil
+1
+Comparison of the DBSCAN and K-MEANS Algorithms in Segmenting Customers Using Public Transportation of Transjakarta Using the RFM Method
+Aditiya Saputra, Raka Yusuf
+DBSCAN dan K-Means
+Algoritma K-Means terbukti lebih unggul dalam mengelompokkan pelanggan Transjakarta dengan nilai Silhouette score sebesar 0.714917, dibandingkan DBSCAN yang memiliki nilai 0.699971. Hal ini mengindikasikan bahwa clustering K-Means memiliki keseragaman internal dan pemisahan antar klaster yang lebih baik.
+2
+Pengaruh Faktor Ekonomi Dan Faktor Sosial Pada Pola Pengguna Transportasi Publik Transjakarta di Jakarta Menggunakan Metode Association Rule
+Siti Marhamatul Lathifah
+Association Rule Mining (Algoritma Apriori)
+Analisis Association Rule menghasilkan 13 pola asosiasi dari pengguna Transjakarta. Ditemukan bahwa faktor usia serta persepsi terhadap kondisi fasilitas menjadi faktor utama dan penciri dalam membentuk pola preferensi transportasi kelompok tersebut.
+3
+Simulasi Clustering Provinsi di Indonesia dalam Penyebaran COVID-19 Berdasarkan Indikator Kesehatan Masyarakat Menggunakan Algoritma Gaussian Mixture Model
+Joko Riyono, Sofia Debi Puspa, Christina Eni Pujiastuti
+Clustering, Gaussian Mixture Model (GMM)
+Model GMM berhasil memetakan data probabilistik untuk mengelompokkan 34 provinsi menjadi 6 klaster optimal berdasarkan potensi penyebaran Covid-19 (dari potensi sangat tinggi hingga sangat rendah) untuk digunakan sebagai acuan kebijakan.
+4
+Penerapan Association Rule Mining untuk Analisis Penempatan Tata Letak Buku di Perpustakaan Menggunakan Algoritma Apriori
+M. Afdal, Muhammad Rosadi
+Association Rule Mining, Algoritma Apriori
+Dari 11.550 transaksi peminjaman buku, algoritma menghasilkan 4 rules. Analisis menemukan bahwa kategori buku agama dan ilmu sosial sering dipinjam bersamaan (support 11,71%, confidence 41,43%), yang merekomendasikan buku-buku tersebut diletakkan pada rak yang berdekatan.
+Konsep Mobilitas Penumpang Transportasi Publik
+Mobilitas penumpang merupakan gambaran pola pergerakan masyarakat dalam melakukan perjalanan dari suatu lokasi asal menuju lokasi tujuan untuk memenuhi kebutuhan aktivitas sosial, ekonomi, dan pendidikan. Dalam konteks perkotaan, mobilitas penumpang menjadi aspek penting karena berkaitan langsung dengan efisiensi sistem transportasi publik dan tingkat aksesibilitas layanan bagi masyarakat.
+Wibowo et al. (2021) menyatakan bahwa mobilitas penumpang transportasi publik mencerminkan perilaku perjalanan yang terbentuk dari interaksi antara karakteristik wilayah, waktu perjalanan, dan ketersediaan layanan transportasi. Pola mobilitas tersebut dapat diamati melalui distribusi perjalanan penumpang antar titik layanan, seperti halte atau koridor, yang menunjukkan tingkat permintaan dan kepadatan pada jaringan transportasi publik.
+Mobilitas penumpang pada transportasi publik perkotaan memiliki dua dimensi utama, yaitu dimensi spasial dan temporal. Dimensi spasial berkaitan dengan lokasi asal dan tujuan perjalanan penumpang, sedangkan dimensi temporal berkaitan dengan variasi waktu perjalanan, seperti jam sibuk dan jam tidak sibuk. Badan Pusat Statistik (BPS, 2023) menyatakan bahwa analisis mobilitas berbasis ruang dan waktu penting untuk memahami variasi kebutuhan perjalanan masyarakat perkotaan yang bersifat dinamis.
+Pendekatan yang umum digunakan dalam analisis mobilitas penumpang adalah pendekatan Origin–Destination (OD). Pendekatan ini memetakan hubungan antara titik asal dan titik tujuan perjalanan penumpang dalam suatu sistem transportasi. Saputra dan Yusuf (2024) menjelaskan bahwa analisis OD pada transportasi publik memungkinkan identifikasi pola perjalanan dominan serta ketimpangan distribusi penumpang antar rute atau koridor layanan.
+Penerapan sistem tiket elektronik pada transportasi publik di Indonesia menghasilkan data transaksi perjalanan penumpang secara otomatis dan berkelanjutan. Data tap-in dan tap-out merekam informasi lokasi dan waktu perjalanan penumpang sehingga dapat dimanfaatkan untuk analisis mobilitas secara empiris. Pusat Data dan Teknologi Informasi Kementerian Perhubungan (2022) menyebutkan bahwa pemanfaatan data transportasi berbasis elektronik memberikan keunggulan dalam memahami pola mobilitas aktual dibandingkan metode survei konvensional yang bersifat terbatas.
+Kementerian Perhubungan Republik Indonesia (2021) menegaskan bahwa pengelolaan mobilitas penumpang transportasi publik perlu dilakukan secara terintegrasi dan berbasis data untuk mendukung sistem transportasi yang efisien dan berkelanjutan. Hal ini diperkuat oleh Direktorat Jenderal Perhubungan Darat (2020) yang menyatakan bahwa analisis pola perjalanan penumpang menjadi dasar penting dalam perencanaan dan evaluasi layanan angkutan umum perkotaan.
+Berdasarkan uraian tersebut, konsep mobilitas penumpang transportasi publik dalam penelitian ini dipahami sebagai pola pergerakan penumpang yang tercermin dari hubungan origin–destination dan distribusi waktu perjalanan dalam sistem transportasi publik perkotaan. Konsep ini menjadi landasan dalam analisis data tap-in dan tap-out untuk mengidentifikasi karakteristik serta variasi pola mobilitas penumpang secara berbasis data.
+Kriteria dan Perencanaan Rute Angkutan Umum
+Perencanaan rute angkutan umum merupakan aspek penting dalam sistem transportasi perkotaan karena berkaitan langsung dengan efisiensi layanan, pemerataan aksesibilitas, serta distribusi permintaan perjalanan. Rute yang dirancang secara optimal perlu mempertimbangkan kepadatan penduduk, pola aktivitas masyarakat, integrasi antar moda, serta kapasitas infrastruktur yang tersedia. Dalam sistem transportasi massal berbasis Bus Rapid Transit (BRT), perencanaan rute juga memperhatikan keberadaan jalur khusus (dedicated lane) untuk menjaga ketepatan waktu dan keandalan layanan.
+Sebagai salah satu sistem BRT terbesar di dunia, TransJakarta memiliki 14 koridor BRT utama dengan total panjang jaringan sekitar 250 kilometer (PT Transportasi Jakarta, 2023). Selain koridor utama, jaringan layanan berkembang melalui integrasi rute non-BRT seperti feeder dan Mikrotrans. Jumlah total rute layanan dilaporkan berada pada kisaran 188 hingga lebih dari 250 rute, tergantung klasifikasi dan periode pelaporan (Southeast Asia Infrastructure, 2023; ITDP Indonesia, 2023; Deliverable 3.2 Roadmap TransJakarta, 2023).
+Dari sisi infrastruktur, jaringan TransJakarta memiliki sekitar 248 halte permanen pada koridor BRT utama serta ribuan titik pemberhentian non-BRT yang melayani jaringan feeder dan layanan pendukung lainnya. Secara agregat, total titik pemberhentian dalam sistem ini mencapai ribuan lokasi, dengan jumlah armada yang beroperasi lebih dari 4.000 unit bus yang mencakup layanan BRT, bus sedang, dan Mikrotrans (ITDP Indonesia, 2023). Skala jaringan yang luas ini menunjukkan kompleksitas sistem transportasi publik di wilayah DKI Jakarta.
+Dalam konteks integrasi transportasi, Pemerintah Provinsi DKI Jakarta mengembangkan program JakLingko sebagai sistem integrasi layanan dan pembayaran antar moda, termasuk TransJakarta, MRT Jakarta, LRT Jakarta, dan KRL Commuterline. Program ini diimplementasikan secara resmi pada masa pemerintahan Gubernur Anies Baswedan melalui kebijakan integrasi tarif dan sistem pembayaran terpadu. Integrasi tersebut memperkuat konektivitas antar rute dan antar moda, sehingga mendukung pengembangan sistem transportasi publik yang lebih terintegrasi dan berbasis jaringan.
+2.4 Data Tap In dan Tap Out Transjakarta
+Data tap-in dan tap-out merupakan data transaksi elektronik yang dihasilkan dari sistem tiket elektronik pada layanan transportasi publik. Data tap-in mencatat waktu dan lokasi penumpang saat memasuki sistem transportasi, sedangkan data tap-out mencatat waktu dan lokasi ketika penumpang keluar dari sistem. Kedua data tersebut membentuk rekaman perjalanan yang merepresentasikan aktivitas perjalanan penumpang secara aktual dalam jaringan layanan.
+Pemanfaatan data transaksi elektronik pada transportasi publik telah banyak digunakan dalam analisis perjalanan penumpang karena bersifat otomatis, berkelanjutan, serta mencakup volume data yang besar. Wibowo (tahun) menyatakan bahwa data transaksi elektronik pada layanan TransJakarta dapat dimanfaatkan untuk menganalisis distribusi penumpang dan beban layanan antar koridor secara lebih objektif dibandingkan metode survei konvensional. Dengan karakteristik tersebut, data tap-in dan tap-out menjadi sumber informasi yang relevan dalam studi mobilitas berbasis data.
+Secara karakteristik, data tap-in dan tap-out bersifat temporal dan sekuensial. Setiap transaksi tercatat berdasarkan urutan waktu, sehingga memungkinkan analisis pola perjalanan harian serta identifikasi intensitas perjalanan pada periode tertentu. Radhi (2021) menjelaskan bahwa data transaksi berbasis waktu sangat relevan dalam analisis mobilitas karena mampu menggambarkan pola perjalanan berulang dalam sistem transportasi.
+Selain itu, data tap-in dan tap-out memungkinkan pembentukan pasangan perjalanan origin–destination secara langsung berdasarkan lokasi awal dan lokasi akhir perjalanan penumpang. Daffuzan (2023) menunjukkan bahwa data transaksi TransJakarta dapat dimanfaatkan untuk mengidentifikasi pola perjalanan berdasarkan hubungan antar halte tanpa memerlukan proses inferensi tambahan sebagaimana pada data survei perjalanan. Dengan demikian, data ini menjadi landasan penting dalam analisis segmentasi mobilitas dan pola keterkaitan perjalanan dalam penelitian ini.
+.
+Data Mining
+Data mining merupakan proses analisis data yang bertujuan untuk menemukan pola, hubungan, serta informasi yang bermakna dari kumpulan data berskala besar. Data mining digunakan untuk mengekstraksi pengetahuan tersembunyi (hidden patterns) yang tidak dapat diidentifikasi secara langsung melalui teknik analisis data konvensional (Fadillah, 2020).
+Secara konseptual, data mining berperan dalam mengubah data mentah menjadi informasi yang bernilai melalui penerapan berbagai teknik analitik, seperti klasifikasi, clustering, prediksi, dan association rule mining. Teknik-teknik tersebut memungkinkan identifikasi struktur data, pengelompokan karakteristik objek, serta penemuan hubungan antar variabel dalam dataset (Yudiana et al., 2023).
+Dalam konteks sistem transportasi publik, data mining memiliki peran yang sangat penting karena data operasional transportasi umumnya memiliki karakteristik volume besar, variasi tinggi, serta dimensi spasial dan temporal. Kompleksitas tersebut menjadikan pendekatan analisis tradisional kurang memadai untuk menangkap pola mobilitas penumpang secara komprehensif (Iswavigra et al., 2023).
+Pada layanan TransJakarta, penerapan sistem tiket elektronik menghasilkan data transaksi tap-in dan tap-out yang merekam aktivitas perjalanan penumpang secara kontinu. Data ini merepresentasikan perilaku mobilitas aktual pengguna, termasuk informasi lokasi keberangkatan, lokasi tujuan, serta waktu perjalanan. Besarnya volume data transaksi yang dihasilkan menuntut penggunaan teknik analisis berbasis data mining agar pola perjalanan penumpang dapat diidentifikasi secara sistematis (Rahara, 2024).
+Pemanfaatan data mining pada data TransJakarta memungkinkan identifikasi berbagai informasi penting, seperti pola perjalanan dominan, segmentasi perilaku mobilitas penumpang, distribusi permintaan layanan, serta hubungan antarhalte dan rute perjalanan. Informasi tersebut memiliki nilai strategis dalam memahami karakteristik mobilitas penumpang pada sistem transportasi publik perkotaan.
+Dalam penelitian ini, data mining digunakan sebagai pendekatan analitis untuk mengeksplorasi pola mobilitas penumpang TransJakarta. Teknik clustering digunakan untuk mengidentifikasi segmentasi pola perjalanan, sedangkan association rule mining digunakan untuk mengekstraksi hubungan keterkaitan antar pola perjalanan yang terbentuk.
+Clustering
+Clustering atau pengelompokan adalah teknik dalam data mining yang digunakan untuk mengelompokkan data ke dalam beberapa klaster berdasarkan tingkat kemiripan antar data tanpa menggunakan label kelas (unsupervised learning). Tujuannya adalah untuk menemukan struktur alami dari data dengan cara mengelompokkan objek-objek yang memiliki karakteristik serupa ke dalam satu kelompok, dan memisahkan yang berbeda ke kelompok lain (Putri & Rosmansyah, 2021). Teknik ini sangat berguna ketika tidak ada label atau kategori yang tersedia dalam data, dan digunakan secara luas dalam eksplorasi data, pengenalan pola, serta segmentasi pelanggan.
+Dalam konteks data transportasi publik seperti TransJakarta, clustering berguna untuk memahami pola perjalanan penumpang, mengelompokkan halte berdasarkan karakteristik penggunaan, atau membagi penumpang ke dalam segmen dengan kebiasaan mobilitas tertentu. Dengan metode ini, dapat diidentifikasi kelompok penumpang yang memiliki perilaku serupa seperti jam keberangkatan rutin, frekuensi perjalanan tinggi, atau rute spesifik yang sering digunakan. Segmentasi semacam ini dapat mendukung optimalisasi layanan berdasarkan karakteristik pengguna (Wibowo et al., 2021).
+Beberapa metode clustering yang umum digunakan dalam data mining antara lain K-Means, DBSCAN, dan Gaussian Mixture Model (GMM). K-Means adalah algoritma populer yang membagi data ke dalam k klaster dengan cara meminimalkan jarak antar data terhadap centroid klaster. Metode ini sederhana dan efisien, namun sensitif terhadap outlier dan bentuk klaster yang tidak bulat (Kristianto, 2021). GMM adalah alternatif probabilistik dari K-Means yang mengasumsikan bahwa data berasal dari gabungan distribusi Gaussian. GMM dapat menangani klaster yang berbentuk elips dan tumpang tindih karena menggunakan pendekatan probabilitas keanggotaan, bukan jarak semata (Nasution et al., 2025).
+Kelebihan dari teknik clustering adalah kemampuannya untuk mengidentifikasi struktur tersembunyi dalam data tanpa supervisi. Namun, setiap metode memiliki kekurangan. K-Means, misalnya, mengharuskan penentuan jumlah klaster di awal dan tidak cocok untuk data dengan distribusi tidak merata. GMM lebih fleksibel dalam menangani bentuk distribusi, tetapi memerlukan proses estimasi parameter yang lebih kompleks, biasanya menggunakan algoritma Expectation-Maximization (EM) (Muthahharah et al., 2022).
+Dalam studi TransJakarta, metode clustering telah digunakan untuk berbagai keperluan analitik. Wibowo et al. (2021) mengimplementasikan metode majority voting berbasis K-Means untuk mengelompokkan koridor TransJakarta berdasarkan pola distribusi penumpang. Daffauzan (2023) menggunakan pendekatan RFM (Recency, Frequency, Monetary) dan K-Means untuk melakukan segmentasi penumpang TransJakarta menjadi beberapa klaster perilaku. Hasil segmentasi tersebut dimanfaatkan untuk menyusun strategi layanan berbeda bagi tiap segmen pengguna, seperti penyesuaian frekuensi bus atau jadwal keberangkatan pada jam tertentu. Pendekatan berbasis clustering terbukti memberikan informasi yang kaya dalam pengambilan keputusan operasional transportasi publik.
+Gaussian Mixture Model
+Gaussian Mixture Model (GMM) merupakan metode model-based clustering yang memodelkan distribusi data sebagai kombinasi dari beberapa distribusi Gaussian. Pendekatan ini berangkat dari asumsi bahwa data yang diamati tidak berasal dari satu distribusi tunggal, melainkan merupakan gabungan (mixture) dari beberapa distribusi probabilistik yang berbeda.
+Berbeda dengan metode clustering berbasis jarak seperti K-Means, Gaussian Mixture Model menggunakan pendekatan probabilistik (soft clustering). Dalam pendekatan ini, setiap observasi tidak secara mutlak menjadi anggota satu klaster tertentu, melainkan memiliki probabilitas keanggotaan terhadap setiap klaster. Karakteristik ini memungkinkan GMM menangkap struktur data yang saling tumpang tindih dan tidak terpisah secara tegas.
+Secara konseptual, Gaussian Mixture Model memodelkan distribusi data sebagai gabungan dari beberapa komponen Gaussian, yang dapat dinyatakan sebagai berikut:
+(2.1)
+Dimana:
+menyatakan jumlah komponen (klaster) dalam model
+merupakan bobot probabilitas dari klaster ke-, dengan 
+merupakan distribusi Gaussian pada klaster ke-
+Model ini menunjukkan bahwa setiap titik data memiliki kemungkinan berasal dari beberapa distribusi Gaussian dengan parameter yang berbeda
+2.7.1 Estimasi Parameter Menggunakan Expectation-Maximization
+Parameter dalam Gaussian Mixture Model umumnya diestimasi menggunakan algoritma Expectation-Maximization (EM). Algoritma ini bekerja secara iteratif untuk memperoleh parameter distribusi Gaussian yang paling sesuai dengan data.
+Proses EM terdiri dari dua tahap utama:
+Expectation Step (E-Step)Pada tahap ini dihitung probabilitas keanggotaan setiap observasi terhadap masing-masing komponen Gaussian.
+Maximization Step (M-Step)Pada tahap ini parameter distribusi Gaussian diperbarui berdasarkan probabilitas yang diperoleh pada E-Step.
+Pendekatan iteratif ini memungkinkan model menyesuaikan parameter secara bertahap hingga mencapai kondisi konvergen.
+2.7.2 Struktur Matriks Kovarians dalam Gaussian Mixture Model
+Salah satu keunggulan utama Gaussian Mixture Model terletak pada fleksibilitas struktur matriks kovarians. Matriks kovarians berperan dalam merepresentasikan karakteristik geometris klaster, termasuk ukuran (volume), variasi (shape), dan orientasi (orientation) distribusi data.
+Dalam implementasi menggunakan paket mclust, tersedia berbagai parameterisasi matriks kovarians yang memungkinkan model menyesuaikan bentuk klaster dengan struktur data yang diamati.
+Tabel 2. 2Parameterisasi Matriks Kovarians pada mclust
+Model
+Distribution
+Volume
+Shape
+Orientation
+EII
+Spherical
+Equal
+Equal
+—
+VII
+Spherical
+Variable
+Equal
+—
+EEI
+Diagonal
+Equal
+Equal
+Coordinate axes
+VEI
+Diagonal
+Variable
+Equal
+Coordinate axes
+EVI
+Diagonal
+Equal
+Variable
+Coordinate axes
+VVI
+Diagonal
+Variable
+Variable
+Coordinate axes
+EEE
+Ellipsoidal
+Equal
+Equal
+Equal
+VVV
+Ellipsoidal
+Variable
+Variable
+Variable
+Parameterisasi tersebut menunjukkan bahwa Gaussian Mixture Model mampu merepresentasikan klaster dengan karakteristik geometris yang berbeda-beda, meliputi klaster berbentuk bola (spherical), diagonal, maupun elips (ellipsoidal). Fleksibilitas struktur kovarians ini memungkinkan model menyesuaikan diri terhadap distribusi data yang kompleks dan heterogen.
+Menurut Fraley et al. (2016), variasi parameterisasi matriks kovarians merupakan salah satu keunggulan utama pendekatan model-based clustering, karena model tidak memaksakan bentuk klaster tertentu, melainkan mengestimasi struktur distribusi yang paling sesuai dengan pola data yang diamati.
+Gambar 2. 1Ellipses of Isodensity pada Berbagai Model Kovarians Gaussian Mixture Model
+Gambar ini menunjukkan ilustrasi ellipses of isodensity untuk berbagai parameterisasi matriks kovarians dalam Gaussian Mixture Model. Perbedaan bentuk elips merepresentasikan variasi volume, shape, dan orientation klaster pada masing-masing model.
+Perbedaan bentuk ellipses of isodensity pada setiap model menunjukkan bahwa Gaussian Mixture Model mampu menangkap variasi distribusi data dengan karakteristik geometris yang beragam. Variasi tersebut mencerminkan kemampuan model dalam merepresentasikan klaster dengan ukuran, bentuk, dan orientasi yang berbeda.
+Kemampuan ini menjadi aspek penting dalam analisis data mobilitas, mengingat pola perjalanan penumpang transportasi publik cenderung bersifat dinamis dan tidak selalu membentuk kelompok yang homogen. Variasi perilaku perjalanan, baik dalam dimensi temporal maupun spasial, memungkinkan adanya tumpang tindih karakteristik antar kelompok penumpang.
+Dalam konteks penelitian ini, pendekatan probabilistik pada Gaussian Mixture Model memungkinkan identifikasi pola mobilitas yang lebih fleksibel dibandingkan metode clustering deterministik. Oleh karena itu, GMM dipilih sebagai metode segmentasi untuk memodelkan variasi pola perjalanan penumpang TransJakarta.
+Association Rule Mining
+Association Rule Mining (ARM) merupakan teknik data mining yang digunakan untuk mengidentifikasi pola keterkaitan atau hubungan antar-item dalam basis data transaksional berskala besar. Metode ini bertujuan untuk menghasilkan aturan asosiasi dalam bentuk implikasi , yang menunjukkan bahwa kemunculan item cenderung diikuti oleh item dalam satu transaksi yang sama. Dengan kata lain, apabila suatu item muncul, terdapat kemungkinan tertentu bahwa item lain juga akan muncul secara bersamaan.
+Berbeda dengan metode clustering yang berfokus pada pengelompokan objek berdasarkan kemiripan atribut, ARM menitikberatkan pada identifikasi hubungan co-occurrence antar-item. Pendekatan ini banyak dimanfaatkan untuk menganalisis pola perilaku pengguna serta hubungan antar kejadian yang tidak terlihat secara eksplisit dalam data (Lathifah, 2023).
+Berbeda dengan metode clustering yang berfokus pada pengelompokan objek berdasarkan kemiripan atribut, ARM menitikberatkan pada identifikasi hubungan ko-occurence antar-item. Dalam konteks transportasi publik, metode ini relevan untuk mengungkap pola perjalanan penumpang, seperti keterkaitan antara halte keberangkatan dan halte tujuan tertentu atau kombinasi rute yang sering digunakan secara bersamaan (Lathifah, 2023).
+Untuk memastikan aturan yang dihasilkan memiliki makna statistik, ARM menggunakan beberapa metrik evaluasi, yaitu support, confidence, dan lift.
+2.8.1 Metrik Support, Confidence, dan Lift
+Dalam Association Rule Mining, evaluasi kualitas aturan asosiasi menggunakan tiga ukuran penting: support, confidence, dan lift. Ketiga metrik ini membantu menentukan kekuatan dan signifikansi hubungan antara item atau kejadian dalam kumpulan data.
+Support mengukur frekuensi kejadian item-item tertentu dalam seluruh transaksi. Nilai support suatu aturan menunjukkan seberapa sering kombinasi antecedent dan consequent muncul bersama dalam dataset. Secara matematis, support dituliskan sebagai:
+(2.2)
+Support tinggi menunjukkan bahwa aturan tersebut sering terjadi dan relevan secara statistik dalam dataset. 
+Confidence adalah ukuran yang menunjukkan seberapa kuat suatu aturan dalam memprediksi consequent jika antecedent terjadi. Confidence dapat diartikan sebagai probabilitas bersyarat bahwa consequent akan terjadi ketika antecedent terjadi, dan dirumuskan sebagai:
+(2.3)
+Semakin tinggi nilai confidence, semakin tinggi tingkat kepercayaan bahwa aturan tersebut dapat merepresentasikan hubungan empiris dalam data. 
+Lift digunakan untuk mengevaluasi tingkat ketergantungan antara antecedent dan consequent dibandingkan dengan kejadian mereka secara independen. Lift dihitung sebagai rasio antara confidence suatu aturan dengan support dari consequent, yaitu:
+(2.4)
+Interpretasi nilai lift adalah sebagai berikut:
+Lift > 1 menunjukkan hubungan positif antar item, artinya antecedent meningkatkan kemungkinan consequent terjadi;
+Lift = 1 menunjukkan kejadian antecedent dan consequent bersifat independen;
+Lift < 1 menunjukkan hubungan negatif atau kurang signifikan antar item. 
+Support, confidence, dan lift bersama-sama digunakan untuk memastikan aturan asosiasi yang dihasilkan tidak hanya sering terjadi, tetapi juga memiliki kekuatan statistik dan relevansi hubungan yang bermakna dalam dataset.
+2.8.2 Algoritma FP-Growth
+Salah satu algoritma yang banyak digunakan dalam ARM adalah Frequent Pattern Growth (FP-Growth). Algoritma ini dikembangkan untuk mengatasi kelemahan Apriori yang memerlukan pembangkitan kandidat itemset secara berulang dan pemindaian basis data berkali-kali, sehingga menyebabkan tingginya kebutuhan memori dan waktu komputasi.
+FP-Growth membangun struktur data berbentuk pohon yang disebut Frequent Pattern Tree (FP-Tree), yang mampu mengompresi transaksi dengan prefix yang sama ke dalam satu jalur. Dengan pendekatan ini, proses penambangan pola hanya memerlukan dua kali pemindaian basis data, yaitu untuk menghitung frekuensi item dan membangun FP-Tree. Proses ekstraksi pola selanjutnya dilakukan melalui conditional pattern base dan conditional FP-Tree tanpa pembangkitan kandidat eksplisit (Nugrahanti, 2022).
+Efisiensi tersebut menjadikan FP-Growth lebih unggul dalam menangani dataset berskala besar, baik dari sisi waktu eksekusi maupun penggunaan memori, serta tetap menghasilkan aturan dengan nilai confidence yang tinggi. Oleh karena itu, algoritma ini sesuai diterapkan pada data transaksi TransJakarta yang memiliki volume data besar dan kompleksitas pola perjalanan yang beragam (Nugrahanti, 2022).
+Kombinasi Gaussian Mixture Model dan Association Rule Mining
+Penggabungan metode clustering dan Association Rule Mining (ARM) merupakan strategi analitik terpadu untuk mengekstraksi informasi berjenjang dari himpunan data berskala besar. Secara umum, integrasi metode clustering seperti K-Means telah banyak digunakan untuk memetakan pola mobilitas, namun pendekatan deterministik pada algoritma tersebut dinilai kaku karena tidak dapat menangkap kemungkinan bahwa satu pengguna memiliki lebih dari satu pola perjalanan (Reynaldi et al., 2025). Pendekatan hard clustering ini memaksa setiap titik data masuk ke dalam satu klaster secara mutlak, sehingga kurang optimal dalam menggambarkan dinamika perilaku pengguna secara probabilistik yang saling tumpang tindih (Reynaldi et al., 2025).
+Untuk menutupi batasan tersebut, Gaussian Mixture Model (GMM) diterapkan sebagai alternatif metode soft clustering. Algoritma GMM memodelkan distribusi data berdasarkan probabilitas, sehingga mampu menangkap distribusi data yang kompleks dan tidak terpisah secara tegas (Agung, 2025). GMM terbukti sangat fleksibel dan adaptif dalam menangani data dengan variasi kontinu (Deofanny et al., 2024), serta mampu menghasilkan separasi klaster yang baik dalam mengidentifikasi pola berdasarkan evaluasi metrik pemisahan seperti Silhouette Score (Nasution et al., 2025).
+Setelah data terbagi ke dalam segmen-segmen secara probabilistik menggunakan GMM, teknik ARM diaplikasikan pada setiap klaster yang terbentuk. ARM berfokus pada identifikasi pola keterkaitan atau hubungan antar-item tersembunyi dengan efisiensi tinggi (Nugrahanti, 2022). Dalam konteks transportasi publik, metode ini sangat relevan dan efektif untuk mengungkap hubungan co-occurrence, seperti pola keterkaitan antara halte keberangkatan dan halte tujuan (Origin-Destination) yang sering digunakan secara bersamaan oleh penumpang (Lathifah, 2023).
+Secara sistematis, kerangka kerja dari kombinasi GMM dan ARM dalam penelitian mobilitas transportasi publik dilakukan melalui dua tahapan utama (Nugrahanti, 2022; Reynaldi et al., 2025):
+Tahap Segmentasi Probabilistik (GMM): Memproses data transaksi penumpang (tap-in dan tap-out) untuk membentuk segmen-segmen pengguna (klaster probabilistik) berdasarkan karakteristik perjalanan secara spasial dan temporal.
+Tahap Ekstraksi Asosiasi (ARM): Melakukan penambangan data pada tiap segmen yang telah terbentuk untuk mengekstraksi hubungan antarhalte dan rute yang unik di dalam kelompok perilaku tersebut.
+Kombinasi algoritma analitik ini mampu memberikan pemahaman yang jauh lebih komprehensif terhadap pola mobilitas penumpang (Nugrahanti, 2022). Alih-alih mencari aturan asosiasi secara acak pada seluruh populasi data, model terpadu ini mampu menghasilkan wawasan asosiasi perjalanan yang jauh lebih spesifik dan presisi pada setiap segmen penumpang (Reynaldi et al., 2025)
+BAB III METODOLOGI PENELITIAN
+Bab ini menjelaskan tahapan penelitian yang dilakukan untuk menganalisis pola mobilitas penumpang TransJakarta menggunakan pendekatan data mining. Berbeda dengan kerangka kerja standar seperti CRISP-DM, penelitian ini menggunakan alur metodologi yang dirancang secara khusus sesuai dengan tujuan analisis, karakteristik data, serta kombinasi metode yang digunakan, yaitu Gaussian Mixture Model (GMM) dan Association Rule Mining (ARM).
+Metodologi penelitian difokuskan pada tiga tahapan utama, yaitu pengumpulan data, data preparation, serta proses modeling yang mengintegrasikan GMM dan ARM.
+3.1 Kerangka Penelitian
+Penelitian ini dirancang sebagai penelitian kuantitatif berbasis data mining yang bertujuan untuk menganalisis pola mobilitas penumpang TransJakarta berdasarkan data transaksi perjalanan. Pendekatan kuantitatif digunakan karena penelitian berfokus pada pengolahan dataset berskala besar yang dianalisis menggunakan model matematis dan algoritma komputasional.
+Kerangka penelitian disusun secara sistematis untuk menggambarkan alur analisis yang digunakan dalam studi. Berbeda dengan kerangka kerja standar dalam data mining seperti CRISP-DM, penelitian ini menggunakan alur metodologi yang dirancang secara khusus sesuai dengan karakteristik data, tujuan penelitian, serta kombinasi metode yang diterapkan. Alur penelitian tersebut ditunjukkan pada Gambar 3.1.
+Gambar 3. 1 Alur Penelitian
+Secara konseptual, penelitian ini terdiri dari empat tahapan utama, yaitu pengumpulan data, data preparation, pemodelan, dan evaluasi model.:
+Pengumpulan Data
+Tahap awal penelitian dilakukan dengan memperoleh dataset transaksi TransJakarta yang bersumber dari dataset publik. Dataset tersebut merepresentasikan aktivitas perjalanan penumpang berdasarkan sistem tiket elektronik (tap-in dan tap-out), yang mencakup informasi waktu perjalanan, halte asal dan tujuan, serta atribut operasional lainnya yang relevan dengan analisis mobilitas.
+Data Preparation
+Tahap ini bertujuan untuk menyiapkan data mentah agar sesuai dengan kebutuhan proses analisis. Proses yang dilakukan meliputi data cleaning dan filtering, penanganan nilai hilang (missing value handling), transformasi variabel waktu ke dalam bentuk numerik, feature engineering, serta normalisasi variabel kontinu menggunakan metode z-score. Tahap ini memastikan bahwa dataset memiliki struktur yang konsisten, stabil, dan kompatibel dengan metode pemodelan berbasis distribusi probabilistik.
+Pemodelan
+Tahap pemodelan dilakukan menggunakan dua pendekatan data mining yang terintegrasi. Pertama, Gaussian Mixture Model (GMM) digunakan untuk melakukan segmentasi penumpang secara probabilistik melalui eksplorasi jumlah cluster dan estimasi parameter menggunakan algoritma Expectation–Maximization (EM). Hasil segmentasi kemudian direpresentasikan dalam format transaksi berbasis pasangan origin–destination (OD) dan dianalisis menggunakan Association Rule Mining (ARM) dengan algoritma FP-Growth untuk mengekstraksi pola keterkaitan perjalanan pada masing-masing cluster.
+Analisis Pola Mobilitas Penumpang
+Tahap evaluasi dilakukan untuk menilai kualitas hasil pemodelan. Evaluasi terhadap GMM dilakukan menggunakan Bayesian Information Criterion (BIC) untuk seleksi model dan Silhouette Score untuk mengukur kualitas pemisahan cluster, sedangkan evaluasi terhadap aturan asosiasi dilakukan menggunakan metrik support, confidence, dan lift guna memastikan bahwa pola yang dihasilkan memiliki kekuatan statistik dan relevansi yang memadai.
+Kerangka penelitian ini dirancang untuk memastikan bahwa proses analisis berjalan secara sistematis dan terstruktur, dengan pemisahan yang jelas antara tahap pengumpulan data, data preparation, pemodelan menggunakan pendekatan probabilistik dan asosiasi, serta evaluasi kuantitatif terhadap hasil model. Dengan pendekatan ini, penelitian tidak hanya menghasilkan segmentasi statistik, tetapi juga pola keterkaitan perjalanan yang relevan dalam menjelaskan karakteristik mobilitas penumpang TransJakarta.
+3.2 Sumber and Karakteristik Data
+Data yang digunakan dalam penelitian ini diperoleh dari platform Kaggle dalam bentuk dataset publik yang memuat transaksi sistem transportasi TransJakarta. Dataset tersedia dalam format Comma Separated Values (CSV) dan berisi catatan perjalanan penumpang berdasarkan sistem tap-in dan tap-out.
+Setiap baris data merepresentasikan satu transaksi perjalanan lengkap dari halte asal ke halte tujuan dalam satu koridor tertentu. Dataset memuat informasi terkait koridor, lokasi halte, waktu perjalanan, urutan halte dalam jalur, serta nilai pembayaran. Data bersifat anonim dan tidak digunakan untuk mengidentifikasi individu, sehingga analisis difokuskan pada pola perjalanan, bukan karakteristik personal pengguna.
+Meskipun dataset memiliki sejumlah atribut, penelitian ini hanya menggunakan atribut yang relevan terhadap analisis mobilitas dan proses pemodelan. Atribut yang berkaitan dengan identitas personal seperti nama pemilik kartu, ID kartu, jenis kelamin, dan tahun lahir tidak digunakan dalam analisis karena tidak berkontribusi terhadap tujuan segmentasi dan pencarian pola rute.
+Tabel 3. 1Struktur Atribut Dataset
+Nama Atribut
+Tipe Data
+Keterangan
+transID
+String
+ID unik transaksi
+corridorID
+String
+ID koridor perjalanan
+corridorName
+String
+Nama koridor
+tapInStopsName
+String
+Nama halte asal
+tapOutStopsName
+String
+Nama halte tujuan
+stopStartSeq
+Integer
+Urutan halte saat tap-in
+stopEndSeq
+Integer
+Urutan halte saat tap-out
+tapInTime
+Datetime
+Waktu tap-in
+tapOutTime
+Datetime
+Waktu tap-out
+payAmount
+Numeric
+Nilai pembayaran perjalanan
+Sebagai ilustrasi struktur data mentah, sebagian kecil contoh data ditampilkan pada Tabel 3.2. Penyajian contoh data dibatasi pada beberapa kolom utama agar tabel tetap proporsional dan mudah dibaca.
+Tabel 3. 2contoh data dari data raw
+transID
+corridorID
+tapInStops
+tapOutStops
+tapInTime
+tapOutTime
+VRPJ892P3M98RA
+4
+Pemuda Rawamangun
+Layur
+4/3/2023 06:53
+4/3/2023 07:13
+YRLD835V6L82GO
+B13
+Mall Metropolitan
+Bandar Djakarta Bekasi
+4/3/2023 05:13
+4/3/2023 06:01
+SQHG432Q6Z10BR
+JAK.37
+Simpang Waru Tengah
+Gg. Ani Raya Condet
+4/3/2023 05:48
+4/3/2023 06:13
+Berdasarkan karakteristiknya, dataset memiliki kombinasi variabel kategorikal dan temporal yang memerlukan proses transformasi sebelum digunakan dalam pemodelan. Variabel waktu akan dikonversi ke format datetime untuk memungkinkan perhitungan durasi perjalanan, sedangkan informasi urutan halte akan digunakan untuk menghasilkan fitur numerik berupa selisih urutan halte.
+Dengan struktur dan karakteristik tersebut, dataset dinilai memadai untuk dianalisis menggunakan pendekatan segmentasi berbasis distribusi probabilistik melalui Gaussian Mixture Model serta eksplorasi pola hubungan antar halte menggunakan Association Rule Mining.
+3.3 Data Preparation
+Tahap data preparation merupakan tahap krusial dalam framework CRISP-DM karena berperan dalam menyiapkan data mentah agar sesuai dengan kebutuhan proses pemodelan. Pada tahap ini, dataset transaksi TransJakarta melalui serangkaian proses evaluasi kualitas data, pembersihan, transformasi variabel, rekayasa fitur, serta normalisasi data. Proses ini bertujuan untuk memastikan bahwa dataset yang digunakan dalam analisis memiliki struktur yang konsisten, bebas dari inkonsistensi signifikan, dan berada dalam format yang sesuai untuk pendekatan Gaussian Mixture Model (GMM) dan Association Rule Mining (ARM).
+Dataset awal memiliki kombinasi atribut kategorikal, numerik, dan temporal. Oleh karena itu, diperlukan transformasi agar data dapat digunakan dalam pemodelan statistik yang berbasis distribusi probabilistik.
+Gambar 3. 2Diagram Alur Data Preparation.
+3.3.1 Data Quality Assessment
+Tahap awal persiapan data diawali dengan evaluasi kualitas dataset untuk mengidentifikasi keberadaan nilai hilang (missing values) serta potensi inkonsistensi atribut. Nilai hilang didefinisikan sebagai entri yang tidak memiliki nilai valid, seperti representasiNA, string kosong, atau nilai yang tidak terdefinisi.
+Identifikasi nilai hilang penting dilakukan karena keberadaannya dapat memengaruhi stabilitas model clustering probabilistik maupun validitas aturan asosiasi.
+Tabel 3. 3 Ilustrasi Kondisi Dataset Awal
+transID
+corridorID
+corridorName
+tapOutStopsName
+T1
+C01
+Blok M – Kota
+Harmoni
+T2
+C02
+(kosong)
+Senen
+T3
+(kosong)
+Ragunan – Dukuh Atas
+(kosong)
+T4
+C03
+Kampung Melayu – Ancol
+Ancol
+T5
+C04
+(kosong)
+Bundaran HI
+3.3.2 Transformasi Variabel Waktu
+Dataset mentah memuat variabel waktu dalam format string. Agar dapat digunakan dalam pemodelan statistik, variabel waktu ditransformasikan ke dalam representasi numerik kontinu melalui konversi ke format datetime dan ekstraksi jam desimal.
+Selain itu dihitung variabel durasi perjalanan untuk merepresentasikan selisih waktu antara tap-in dan tap-out.
+Rumus yang digunakan dalam transformasi waktu adalah:
+Transformasi ini bertujuan menghasilkan variabel kontinu yang sesuai untuk model GMM.
+Tabel 3. 4 Contoh Transformasi Variabel Waktu
+Sebelum Transformasi
+transID
+tapInTime
+tapOutTime
+T1
+06:30
+07:10
+T2
+08:05
+08:45
+T3
+17:20
+18:05
+T4
+05:50
+06:30
+Sesudah Transformasi
+transID
+tapIn_hour
+duration_minutes
+T1
+6,5
+40
+T2
+8,1
+40
+T3
+17,3
+45
+T4
+5,8
+40
+3.3.3 Filter Durasi Perjalanan
+Variabel durasi perjalanan dievaluasi untuk memastikan konsistensi logika operasional. Observasi dengan durasi yang tidak rasional, seperti durasi nol, negatif, atau melebihi batas wajar operasional, dieliminasi dari dataset.
+Langkah ini bertujuan mengurangi noise statistik dan menjaga validitas distribusi data.
+Tabel 3. 5 Contoh Filter Durasi Perjalanan
+Sebelum Filter
+transID
+duration_minutes
+T1
+40
+T2
+-10
+T3
+250
+T4
+55
+T5
+0
+Sesudah Filter
+transID
+duration_minutes
+T1
+40
+T4
+55
+3.3.4 Filter Jam Operasional
+Validitas temporal transaksi dievaluasi dengan mempertahankan observasi yang berada dalam rentang jam operasional layanan TransJakarta. Transaksi di luar rentang ini dianggap sebagai anomali sistem pencatatan.
+Tabel 3. 6 Contoh Filter Jam Operasional
+Sebelum Filter
+transID
+tapIn_hour
+T1
+6,5
+T2
+23,2
+T3
+4,3
+T4
+17,1
+T5
+21,8
+Sesudah Filter
+transID
+tapIn_hour
+T1
+6,5
+T4
+17,1
+T5
+21,8
+3.3.5 Feature Engineering
+Tahap rekayasa fitur dilakukan untuk membentuk variabel tambahan yang mampu merepresentasikan karakteristik temporal dan perilaku perjalanan penumpang.Variabel baru yang dibentuk mencerminkan dimensi waktu dan intensitas mobilitas.
+Tabel 3. 7Contoh Variabel Hasil Rekayasa Fitur
+transID
+tapIn_hour
+day_of_week
+is_weekend
+T1
+6,5
+1
+0
+T2
+8,2
+6
+1
+T3
+17,4
+3
+0
+T4
+12,1
+7
+1
+3.3.6 Imputasi Nilai Hilang
+Nilai hilang pada atribut penting ditangani menggunakan pendekatan imputasi berbasis relasi antaratribut dalam dataset. Pendekatan ini memanfaatkan konsistensi pola data yang tersedia.Strategi ini bertujuan mempertahankan volume data dan menjaga konsistensi atribut analitis.
+Tabel 3. 8 Contoh Proses Imputasi
+Sebelum Imputasi
+transID
+tapInStops
+corridorName
+T1
+Halte A
+(kosong)
+T2
+Halte B
+Koridor 2
+T3
+Halte A
+Koridor 1
+T4
+Halte C
+(kosong)
+ Sesudah Imputasi
+transID
+tapInStops
+corridorName
+T1
+Halte A
+Koridor 1
+T2
+Halte B
+Koridor 2
+T3
+Halte A
+Koridor 1
+T4
+Halte C
+(kosong)
+3.3.7 Pembersihan Data dan Outlier
+Dataset selanjutnya melalui proses pembersihan akhir untuk menghapus observasi yang tidak valid secara logis maupun observasi yang teridentifikasi sebagai outlier.Outlier didefinisikan sebagai observasi dengan pola perjalanan ekstrem yang berpotensi mendistorsi distribusi model clustering.
+3.3.8 Normalisasi Variabel
+Tahap akhir preparation adalah normalisasi variabel kontinu menggunakan metode Z-score. Normalisasi dilakukan untuk menyetarakan skala variabel numerik.
+Tabel 3. 9 Contoh Normalisasi Variabel
+Sebelum Normalisasi
+tapIn_hour
+duration_minutes
+6,5
+40
+8,1
+55
+17,3
+80
+12,2
+60
+Sesudah Normalisasi
+z_tapIn_hour
+z_duration_minutes
+-1,02
+-0,88
+-0,73
+-0,32
+0,86
+0,71
+0,12
+-0,04
+3.4 Pemodelan Gaussian Mixture Model (GMM)
+Tahap pemodelan dilakukan untuk mengidentifikasi pola mobilitas penumpang berdasarkan fitur numerik yang telah melalui proses standardisasi. Pada penelitian ini, metode yang digunakan adalah Gaussian Mixture Model (GMM), yang memungkinkan pembentukan cluster secara probabilistik.
+Pemodelan diawali dengan penyusunan feature matrix hasil data preparation. Variabel yang digunakan merepresentasikan karakteristik temporal dan intensitas perjalanan penumpang. Contoh struktur data yang digunakan dalam pemodelan ditunjukkan pada tabel berikut.
+Tabel 3. 10 Contoh Hasil Data Preparation
+tapIn_hour
+duration_minutes
+n_trips
+is_weekend
+6.58
+30
+3
+0
+18.17
+84
+2
+0
+13.38
+54
+1
+1
+7.95
+70
+2
+0
+Data pada tahap ini sepenuhnya berbentuk numerik sehingga kompatibel dengan pendekatan Gaussian Mixture Model.
+Seluruh tahapan pemodelan GMM dalam penelitian ini dirangkum pada diagram alur berikut.
+Gambar 3. 3Diagram Alur Pemodelan Gaussian Mixture Model (GMM)
+Diagram menunjukkan tahapan pemodelan Gaussian Mixture Model yang meliputi data hasil pembersihan, rekayasa fitur, standardisasi variabel, proses fitting model, seleksi model berbasis Bayesian Information Criterion (BIC), estimasi parameter menggunakan algoritma Expectation-Maximization (EM), serta penugasan cluster probabilistik.
+3.4.1 Representasi Data untuk Pemodelan
+Pemodelan Gaussian Mixture Model menggunakan feature matrix hasil proses data preparation dan standardisasi. Pada tahap ini, setiap observasi direpresentasikan sebagai vektor numerik yang menggambarkan karakteristik perjalanan penumpang.
+Variabel yang digunakan dalam pemodelan dipilih berdasarkan relevansi terhadap pola mobilitas, khususnya variabel temporal, durasi perjalanan, serta intensitas penggunaan layanan.
+Tabel 3. 11Variabel Pemodelan GMM
+Variabel
+Tipe
+Keterangan
+z_tapIn_hour
+Kontinu
+Jam tap-in hasil standardisasi z-score
+z_duration_minutes
+Kontinu
+Durasi perjalanan hasil standardisasi
+z_n_trips
+Kontinu
+Frekuensi perjalanan hasil standardisasi
+z_n_days_month
+Kontinu
+Hari aktif perjalanan hasil standardisasi
+is_weekend
+Biner
+Indikator perjalanan akhir pekan
+is_commuter
+Biner
+Indikator pengguna reguler
+Variabel kontinu telah melalui standardisasi z-score untuk memastikan keseragaman skala antar fitur. Proses ini penting untuk menghindari dominasi variabel tertentu dalam estimasi model. Variabel biner dipertahankan dalam bentuk aslinya karena telah berada pada rentang nilai yang stabil.
+Representasi numerik ini menghasilkan struktur data multidimensi yang menjadi dasar dalam proses estimasi distribusi probabilistik oleh GMM
+3.4.2 Spesifikasi Model GMM
+Pemodelan Gaussian Mixture Model dilakukan melalui eksperimen untuk menentukan konfigurasi model yang paling sesuai dengan struktur data. Spesifikasi pemodelan mencakup evaluasi jumlah cluster kandidat serta variasi parameterisasi matriks kovarians.
+Tabel 3. 12Spesifikasi Eksperimen GMM
+Komponen
+Spesifikasi
+Rentang jumlah cluster (K)
+2 – 12
+Tipe model kovarians
+EII, VII, EEE, VVV
+Kriteria seleksi model
+Bayesian Information Criterion (BIC)
+Metode estimasi parameter
+Expectation-Maximization (EM)
+Rentang jumlah cluster (K = 2 – 12) digunakan untuk memberikan ruang eksplorasi model tanpa membatasi struktur data secara prematur. Nilai minimum memastikan adanya segmentasi, sedangkan batas atas dipilih untuk menjaga keseimbangan antara fleksibilitas model dan kompleksitas parameter.
+Setiap nilai K dievaluasi menggunakan beberapa struktur kovarians untuk mengakomodasi kemungkinan variasi bentuk distribusi data. Pendekatan ini memungkinkan model menyesuaikan karakteristik cluster, baik dalam hal volume, bentuk, maupun orientasi distribusi.
+Pemilihan model optimal dilakukan menggunakan Bayesian Information Criterion (BIC), yang digunakan untuk menilai kesesuaian model terhadap data dengan mempertimbangkan kompleksitas parameter. Estimasi parameter model dilakukan menggunakan algoritma Expectation-Maximization (EM), yang bekerja secara iteratif hingga parameter model mencapai kondisi stabil.
+3.4.3 Estimasi Parameter Menggunakan Expectation-Maximization (EM)
+Proses fitting Gaussian Mixture Model (GMM) dilakukan untuk mengestimasi parameter distribusi berdasarkan feature matrix hasil standardisasi. Estimasi parameter model dilakukan menggunakan algoritma Expectation-Maximization (EM).
+Algoritma Expectation-Maximization diawali dengan penentuan parameter awal (initial values), kemudian dilanjutkan melalui tahapan iteratif berupa expectation step dan maximization step. Proses iterasi dilakukan hingga parameter model mencapai kondisi konvergen.
+Gambar 3. 4Proses Iteratif Algoritma Expectation-Maximization
+Diagram menggambarkan mekanisme iteratif algoritma Expectation-Maximization yang meliputi penentuan parameter awal (initial values), proses expectation step, proses maximization step, serta evaluasi konvergensi model.
+3.4.4 Seleksi Model dan Penentuan Jumlah Cluster Optimal
+Seleksi model dilakukan untuk menentukan konfigurasi Gaussian Mixture Model (GMM) yang paling sesuai dengan struktur data. Proses ini mencakup evaluasi jumlah cluster kandidat serta pemilihan parameterisasi matriks kovarians.
+Dalam penelitian ini, pemodelan dilakukan pada rentang jumlah cluster (K = 2 – 12) dengan beberapa model kovarians. Variasi jumlah cluster digunakan untuk mengidentifikasi kompleksitas segmentasi data, sedangkan variasi model kovarians digunakan untuk mengakomodasi kemungkinan perbedaan karakteristik distribusi cluster.
+Pemilihan model optimal menggunakan kriteria Bayesian Information Criterion (BIC). Setiap kombinasi jumlah cluster dan model kovarians menghasilkan nilai BIC yang digunakan sebagai dasar evaluasi model. Dalam pendekatan ini, model dengan nilai BIC tertinggi dipilih sebagai model terbaik.
+Tabel 3. 13Ilustrasi Evaluasi Model Berbasis Bayesian Information Criterion
+Jumlah Cluster (K)
+Model Kovarians
+Nilai BIC
+2
+EII
+-1.637.537
+3
+VII
+-1.402.113
+4
+EEE
+-1.329.885
+5
+VVV
+-1.244.451
+Berdasarkan tabel tersebut, konfigurasi model dengan nilai BIC tertinggi dipilih sebagai model optimal. Meskipun nilai BIC direpresentasikan dalam bentuk negatif, nilai yang lebih mendekati nol menunjukkan kualitas pemodelan yang lebih baik.
+Selain mempertimbangkan nilai BIC tertinggi, perubahan nilai BIC antar jumlah cluster juga dianalisis. Analisis ini digunakan untuk mengevaluasi stabilitas peningkatan kualitas model seiring bertambahnya jumlah cluster.
+Perubahan nilai BIC (ΔBIC) membantu mengidentifikasi titik di mana penambahan cluster tidak lagi memberikan peningkatan model yang signifikan. Kondisi ini mengindikasikan bahwa kompleksitas model meningkat tanpa diikuti perbaikan representasi distribusi data yang proporsional.
+Jumlah Cluster (K)
+Nilai BIC
+ΔBIC
+2
+-1.637.537
+–
+3
+-1.402.113
+235.424
+4
+-1.329.885
+72.228
+5
+-1.244.451
+85.434
+6
+-1.481.559
+-237.108
+Berdasarkan perubahan nilai tersebut, peningkatan kualitas model terlihat hingga jumlah cluster tertentu. Setelah titik optimal tercapai, nilai ΔBIC menunjukkan penurunan kualitas model, yang mengindikasikan bahwa penambahan cluster tidak lagi memberikan perbaikan yang signifikan.
+3.4.5 Penugasan Cluster Probabilistik
+Setelah model optimal diperoleh, setiap observasi diberikan probabilitas keanggotaan terhadap cluster yang terbentuk. Pendekatan ini merupakan karakteristik utama Gaussian Mixture Model, di mana keanggotaan cluster direpresentasikan dalam bentuk probabilitas posterior.
+Probabilitas posterior menunjukkan derajat keyakinan model bahwa suatu observasi berasal dari distribusi cluster tertentu. Observasi selanjutnya diklasifikasikan ke cluster dengan probabilitas tertinggi.
+Tabel 3. 14Ilustrasi Probabilitas Keanggotaan Cluster
+Prob_Cl1
+Prob_Cl2
+Prob_Cl3
+Cluster
+0.000
+0.999
+0.001
+2
+0.998
+0.002
+0.000
+1
+0.010
+0.020
+0.970
+3
+Pendekatan probabilistik ini memungkinkan model merepresentasikan variasi data yang saling tumpang tindih, sehingga lebih fleksibel dibandingkan metode clustering deterministik
+3.4.6 Evaluasi Kualitas Clustering
+Evaluasi clustering dilakukan untuk mengukur kualitas struktur cluster yang dihasilkan oleh model. Tahap ini bertujuan untuk memastikan bahwa konfigurasi model yang dipilih mampu memberikan pemisahan data yang stabil dan representatif.
+Dalam penelitian ini, evaluasi clustering menggunakan beberapa metrik kuantitatif, yaitu:
+Silhouette Score → mengukur kualitas pemisahan cluster
+Cluster Entropy → mengukur tingkat ketidakpastian assignment
+Composite Score → evaluasi agregatif model
+Tabel 3. 15Ilustrasi Evaluasi Kualitas Clustering
+Jumlah Cluster (K)
+Silhouette Score
+Entropy
+Composite Score
+3
+0.327
+0.041
+0.835
+4
+0.233
+0.064
+0.544
+5
+0.303
+0.036
+0.901
+Nilai evaluasi menunjukkan bahwa konfigurasi cluster optimal memberikan keseimbangan terbaik antara kualitas pemisahan cluster dan stabilitas probabilistik model
+3.4.7 Output Pemodelan dan Interpretasi Cluster
+Proses pemodelan Gaussian Mixture Model (GMM) menghasilkan beberapa komponen output utama yang digunakan dalam analisis. Output tersebut meliputi parameter distribusi cluster, probabilitas posterior, serta struktur segmentasi data.
+Parameter distribusi cluster merepresentasikan karakteristik statistik setiap cluster yang terbentuk. Parameter ini mencerminkan pusat distribusi serta variasi data dalam masing-masing cluster. Selain itu, model juga menghasilkan probabilitas posterior yang menunjukkan derajat keanggotaan setiap observasi terhadap cluster.
+Pendekatan probabilistik pada GMM memungkinkan setiap observasi memiliki peluang keanggotaan pada seluruh cluster. Informasi ini memberikan gambaran mengenai tingkat keyakinan model dalam proses klasifikasi cluster.
+Tabel 3. 16Ilustrasi Ringkasan Karakteristik Cluster
+Cluster
+Mean Tap-In Hour
+Mean Duration
+Karakteristik Umum
+1
+6.00
+40
+Mobilitas pagi dini
+2
+18.17
+84
+Mobilitas sore
+3
+7.95
+70
+Mobilitas pagi
+4
+13.38
+54
+Mobilitas kasual
+5
+12.04
+60
+Mobilitas intensif
+Karakteristik cluster menggambarkan variasi pola mobilitas penumpang berdasarkan variabel yang digunakan dalam pemodelan. Perbedaan nilai rata-rata antar cluster menunjukkan adanya heterogenitas perilaku perjalanan dalam dataset.
+Output clustering yang dihasilkan tidak hanya berfungsi sebagai segmentasi statistik, tetapi juga sebagai dasar dalam proses analisis lanjutan. Struktur cluster probabilistik ini selanjutnya digunakan dalam tahap Association Rule Mining untuk mengidentifikasi pola keterkaitan perjalanan pada masing-masing cluster
+3.5 Association Rule Mining (ARM)
+Tahap Association Rule Mining (ARM) dilakukan untuk mengidentifikasi pola keterkaitan penggunaan koridor berdasarkan struktur cluster yang diperoleh dari pemodelan Gaussian Mixture Model (GMM). Pendekatan ini digunakan untuk menemukan hubungan asosiasi antar item dalam data transaksi.
+Pada penelitian ini, metode ARM yang digunakan adalah algoritma Fp-Growth. Algoritma ini dipilih karena kemampuannya dalam mengidentifikasi frequent itemsets serta menghasilkan aturan asosiasi berdasarkan ukuran support dan confidence.
+Proses ARM dilakukan melalui beberapa tahapan yang meliputi representasi data transaksi, transformasi data ke format basket, pembentukan transactions object, analisis frekuensi item, penerapan algoritma Fp-Growth, evaluasi aturan asosiasi, serta analisis pola asosiasi per cluster.
+Gambar 3. 5Diagram Alur Association Rule Mining Menggunakan Algoritma FP-Growth
+Diagram menunjukkan tahapan proses Association Rule Mining yang meliputi representasi data transaksi, transformasi data ke format basket, pembentukan transactions object, analisis frekuensi item, penerapan algoritma FP-Growth, evaluasi aturan asosiasi, serta analisis pola asosiasi per cluster.
+3.5.1 Representasi Data Transaksi
+Tahap representasi data transaksi bertujuan untuk menyusun struktur data yang sesuai dengan kebutuhan proses Association Rule Mining. Pada tahap ini, data perjalanan individual dikonversi menjadi unit transaksi yang merepresentasikan kumpulan item dalam satu konteks analisis.
+Dalam penelitian ini, transaksi didefinisikan sebagai kombinasi identitas pengguna dan dimensi temporal perjalanan. Setiap transaksi merepresentasikan kumpulan koridor yang digunakan oleh satu pengguna dalam periode waktu tertentu.
+Pendekatan ini memungkinkan data perjalanan yang semula berbentuk individual trip direpresentasikan sebagai struktur market basket, di mana setiap transaksi terdiri dari satu atau lebih item berupa koridor TransJakarta.
+Tabel 3. 17Ilustrasi Struktur Data Transaksi
+Transaction ID
+Cluster
+Item
+T1
+3
+Koridor A
+T1
+3
+Koridor B
+T2
+4
+Koridor C
+T2
+4
+Koridor D
+Representasi transaksi ini menjadi dasar dalam proses transformasi data ke format basket pada tahap berikutnya3.5.2 Transformasi Data ke Format Basket
+Tahap transformasi data bertujuan untuk mengubah struktur transaksi menjadi representasi basket data yang sesuai dengan kebutuhan proses Association Rule Mining. Pada tahap ini, setiap transaksi direpresentasikan sebagai kumpulan item yang muncul dalam satu unit analisis.
+Transformasi dilakukan dengan mengelompokkan item berdasarkan identitas transaksi yang telah didefinisikan sebelumnya. Setiap transaksi selanjutnya berisi satu atau lebih item yang merepresentasikan koridor TransJakarta yang digunakan dalam periode transaksi tersebut.
+Tabel 3. 18Ilustrasi Struktur Data Basket
+Transaction ID
+Items
+T1
+{Koridor A, Koridor B}
+T2
+{Koridor C, Koridor D}
+T3
+{Koridor A, Koridor C}
+Pada struktur basket tersebut, setiap baris merepresentasikan satu transaksi yang bersifat independen. Kolom Transaction ID menunjukkan identitas unik transaksi, sedangkan kolom Items menunjukkan kumpulan item yang muncul dalam transaksi tersebut.
+Kumpulan item dalam satu transaksi mencerminkan kombinasi koridor yang digunakan secara bersamaan dalam konteks definisi transaksi yang telah ditetapkan. Representasi ini diperlukan karena proses Association Rule Mining tidak menganalisis observasi individual, melainkan hubungan asosiasi antar item dalam satu transaksi.
+Sebagai contoh, transaksi T1 yang berisi {Koridor A, Koridor B} menunjukkan bahwa kedua koridor tersebut muncul dalam unit transaksi yang sama. Struktur ini memungkinkan algoritma ARM untuk mengevaluasi pola kemunculan bersama (co-occurrence) antar item.
+Dengan demikian, transformasi ke format basket menghasilkan representasi data yang kompatibel dengan proses pembentukan transactions object serta analisis pola asosiasi
+3.5.3 Pembentukan Transactions Object
+Setelah data direpresentasikan dalam format basket, tahap berikutnya adalah pembentukan transactions object. Tahap ini bertujuan untuk mengonversi struktur basket menjadi format data yang kompatibel dengan proses Association Rule Mining.
+Pada penelitian ini, pembentukan transactions object dilakukan menggunakan pustaka arules. Format ini diperlukan karena algoritma FP-Growth beroperasi pada struktur data transaksi yang merepresentasikan kumpulan item dalam bentuk matriks biner.
+Dalam representasi transactions object, setiap transaksi direpresentasikan sebagai vektor biner yang menunjukkan keberadaan atau ketidakhadiran item dalam transaksi. Item yang muncul dalam transaksi diberi nilai aktif, sedangkan item yang tidak muncul diberi nilai tidak aktif.
+Tabel 3. 19Ilustrasi Representasi Transactions Object
+Transaction ID
+Koridor A
+Koridor B
+Koridor C
+Koridor D
+T1
+1
+1
+0
+0
+T2
+0
+0
+1
+1
+T3
+1
+0
+1
+0
+Pada struktur tersebut, setiap baris merepresentasikan satu transaksi, sedangkan setiap kolom merepresentasikan item. Nilai biner menunjukkan apakah suatu item muncul dalam transaksi tertentu.
+Representasi ini memungkinkan algoritma ARM untuk melakukan analisis frekuensi item serta mengidentifikasi pola asosiasi antar item secara sistematis. Selain itu, format transactions object juga mengoptimalkan proses komputasi dalam ekstraksi frequent itemsets.
+3.5.4 Analisis Frekuensi Item
+Analisis frekuensi item dilakukan untuk mengidentifikasi tingkat kemunculan setiap item dalam struktur transaksi. Tahap ini bertujuan untuk memperoleh gambaran awal mengenai distribusi item sebelum proses ekstraksi pola asosiasi dilakukan.
+Dalam konteks Association Rule Mining, frekuensi item merepresentasikan proporsi transaksi yang mengandung item tertentu. Informasi ini digunakan untuk mengevaluasi dominasi item serta memahami karakteristik dasar dataset transaksi.
+Pada penelitian ini, analisis frekuensi item dilakukan terhadap seluruh koridor yang direpresentasikan dalam transactions object. Nilai frekuensi dihitung berdasarkan jumlah transaksi yang mengandung item dibandingkan dengan total transaksi.
+Item
+Frekuensi Kemunculan
+Support
+Koridor A
+1.245
+0.327
+Koridor B
+1.032
+0.271
+Koridor C
+856
+0.225
+Koridor D
+642
+0.169
+Pada tabel tersebut, kolom frekuensi menunjukkan jumlah transaksi yang mengandung item tertentu, sedangkan kolom support menunjukkan proporsi kemunculan item terhadap keseluruhan transaksi.
+ frekuensi item memberikan indikasi awal mengenai tingkat dominasi item dalam dataset. Item dengan nilai support tinggi menunjukkan tingkat kemunculan yang lebih konsisten dalam transaksi, sedangkan item dengan support rendah menunjukkan pola kemunculan yang lebih jarang.
+3.5.5 Penerapan Algoritma FP-Growth
+Untuk menentukan pola asosiasi Pada penelitian ini dilakukan menggunakan algoritma Frequent Pattern Growth (FP-Growth). Algoritma ini digunakan untuk mengidentifikasi frequent itemsets berdasarkan struktur transaksi yang telah dibentuk pada tahap sebelumnya.
+Algoritma FP-Growth dipilih karena kemampuannya dalam mengekstraksi pola frekuensi item secara efisien tanpa memerlukan proses candidate generation. Pendekatan ini memungkinkan proses komputasi dilakukan secara lebih optimal, terutama pada dataset dengan jumlah item yang relatif besar dan struktur data yang bersifat sparse.
+Proses FP-Growth diawali dengan pembentukan struktur Frequent Pattern Tree (FP-Tree), yang merepresentasikan hubungan frekuensi antar item dalam transaksi. Struktur ini memungkinkan identifikasi kombinasi item yang sering muncul secara bersamaan dalam unit transaksi.
+Pada penelitian ini, penerapan algoritma dilakukan dengan menetapkan parameter minimum support sebagai batas frekuensi kemunculan itemset. Parameter ini digunakan untuk menyaring kombinasi item yang memiliki tingkat kemunculan signifikan dalam dataset transaksi.
+Tabel 3. 20Ilustrasi Data Transaksi
+Transaction ID
+Items
+T1
+{Koridor A, Koridor B}
+T2
+{Koridor C, Koridor D}
+T3
+{Koridor A, Koridor C}
+T4
+{Koridor A, Koridor B}
+T5
+{Koridor A, Koridor C}
+Berdasarkan struktur transaksi tersebut, algoritma FP-Growth menghasilkan frequent itemsets, yaitu kombinasi item yang memiliki tingkat kemunculan memenuhi ambang batas minimum support.
+Tabel 3. 21Ilustrasi Frequent Itemsets
+Itemsets
+Support
+{Koridor A}
+0.80
+{Koridor B}
+0.40
+{Koridor C}
+0.40
+{Koridor A, Koridor B}
+0.40
+{Koridor A, Koridor C}
+0.40
+Tabel frequent itemsets merepresentasikan seluruh kombinasi item yang memenuhi ambang batas minimum support. Kombinasi tersebut mencakup item tunggal maupun kombinasi item.
+Kemunculan item tunggal dalam tabel menunjukkan frekuensi kemunculan individual item, sedangkan kombinasi item menunjukkan pola kemunculan bersama (co-occurrence) antar item dalam transaksi. Struktur ini merupakan karakteristik standar dalam proses ekstraksi pola frekuensi pada Association Rule Mining.
+Kombinasi item dengan nilai support signifikan selanjutnya digunakan sebagai dasar dalam pembentukan association rules pada tahap evaluasi berikutnya
+3.5.6 Evaluasi Association Rules
+Evaluasi association rules dilakukan untuk menilai kualitas aturan yang dihasilkan oleh algoritma FP-Growth. Evaluasi menggunakan tiga metrik utama, yaitu support, confidence, dan lift.
+Support mengukur proporsi kemunculan kombinasi antecedent dan consequent dalam seluruh transaksi pada satu cluster. Confidence mengukur probabilitas terjadinya consequent ketika antecedent terjadi. Lift digunakan untuk menilai kekuatan hubungan antar item dibandingkan dengan kondisi independen.
+Aturan yang dipertahankan dalam penelitian ini adalah aturan yang memenuhi ambang batas minimum support dan confidence, serta memiliki nilai lift > 1
+Tabel 3. 22Ilustrasi Evaluasi Association Rules
+Origin 
+Destination
+Support
+Confidence
+Lift
+Koridor A
+Koridor C
+0,08
+0,72
+1,85
+Koridor B
+Koridor D
+0,05
+0,64
+1,42
+Koridor A
+Koridor E
+0,03
+0,51
+0,98
+Berdasarkan ilustrasi tersebut, aturan dengan nilai lift kurang dari 1 tidak dipertahankan karena tidak menunjukkan asosiasi positif.
+Evaluasi aturan dilakukan dengan melihat tiga nilai sekaligus. Nilai support sebaiknya minimal 0,02 atau 0,05 agar aturan tersebut cukup sering muncul dalam cluster. Nilai confidence dikatakan baik jika ≥ 0,60 karena berarti lebih dari 60% perjalanan dari halte asal benar-benar menuju halte tujuan tersebut. Nilai lift harus lebih dari 1 agar menunjukkan bahwa hubungan antar halte bukan terjadi secara kebetulan. Aturan yang dipertahankan adalah aturan yang memenuhi ketiga syarat tersebut secara bersamaan.
+3.5.7 Analisis Pola Asosiasi Per Cluster
+Setelah aturan yang memenuhi kriteria evaluasi dipilih, tahap selanjutnya adalah membandingkan pola asosiasi pada masing-masing cluster. Analisis ini bertujuan untuk melihat perbedaan kecenderungan perjalanan antar segmen penumpang berdasarkan pasangan origin–destination (OD) yang muncul pada setiap kelompok.
+Tabel 3. 23Ilustrasi Pola Dominan Per Cluster
+Cluster
+Pola OD Dominan
+Support
+Confidence
+Lift
+C1
+Halte A → Halte C
+0,08
+0,72
+1,85
+C2
+Halte F → Halte H
+0,11
+0,78
+2,10
+C3
+Halte B → Halte D
+0,05
+0,64
+1,42
+Berdasarkan ilustrasi tersebut, terlihat bahwa setiap cluster memiliki pasangan OD yang berbeda sebagai pola perjalanan yang menonjol. Misalnya, pada cluster C1 perjalanan Halte A → Halte C muncul pada 8% transaksi dalam segmen tersebut dan memiliki tingkat keterkaitan yang relatif kuat. Pada cluster C2, pola dominan berbeda, yaitu Halte F → Halte H dengan nilai support dan confidence yang lebih tinggi dibandingkan C1 dan C3. Sementara itu, cluster C3 menunjukkan pola perjalanan yang berbeda lagi.
+Perbedaan pola antar cluster ini menunjukkan bahwa segmentasi menggunakan GMM berhasil memisahkan kelompok penumpang dengan karakteristik mobilitas yang tidak sama. Pada tahap ini, fokus analisis adalah membandingkan variasi pola perjalanan antar segmen, bukan lagi menilai kekuatan aturan secara individual.
+3.6 Analisis Integratif
+Tahap analisis integratif dilakukan untuk menggabungkan hasil segmentasi dari Gaussian Mixture Model (GMM) dengan pola asosiasi yang diperoleh melalui Association Rule Mining (ARM). Tujuan tahap ini adalah untuk memahami karakteristik mobilitas penumpang secara lebih komprehensif dengan mempertimbangkan struktur cluster dan pola perjalanan yang terbentuk di dalamnya.
+Pada tahap ini, setiap cluster hasil GMM dianalisis berdasarkan dua aspek utama, yaitu karakteristik statistik segmen (seperti rata-rata waktu keberangkatan, durasi perjalanan, dan intensitas perjalanan) serta pola origin–destination (OD) dominan yang muncul dari hasil ARM. Analisis dilakukan dengan mengaitkan profil numerik masing-masing cluster dengan aturan asosiasi yang terbentuk, sehingga dapat diidentifikasi hubungan antara karakteristik temporal dan kecenderungan rute perjalanan.
+Sebagai ilustrasi, apabila suatu cluster memiliki rata-rata waktu keberangkatan pada jam sibuk pagi dan didominasi oleh aturan OD tertentu, maka pola tersebut dapat diinterpretasikan sebagai karakteristik mobilitas komuter pagi. Pendekatan ini memungkinkan hasil segmentasi probabilistik tidak hanya berhenti pada pengelompokan statistik, tetapi juga dikaitkan dengan pola perjalanan yang lebih kontekstual.
+Melalui analisis integratif ini, penelitian menghasilkan pemahaman yang lebih terstruktur mengenai variasi mobilitas penumpang antar segmen, dengan menggabungkan pendekatan distribusi probabilistik dan pola asosiasi perjalanan dalam satu kerangka analisis yang terpadu.
+3.7 Perangkat dan Lingkungan Implementasi
+DAFTAR PUSTAKA
+Saputra, A., & Yusuf, R. (2024). Perbandingan Algoritma DBSCAN dan K-MEANS dalam Segmentasi Pelanggan Pengguna Transportasi Publik Transjakarta Menggunakan Metode RFM: Comparison of the DBSCAN and K-MEANS Algorithms in Segmenting Customers Using Public Transportation of Transjakarta Using the RFM Method. MALCOM: Indonesian Journal of Machine Learning and Computer Science, 4(4), 1346-1361.
+Artika, R. D., Rafifah, N. N., Dina, P. A., & Rozikin, C. (2025). Perancangan Data Pipeline Untuk Analisis Pola Perjalanan dan Permintaan Layanan Transjakarta. Jurnal Informatika dan Teknik Elektro Terapan, 13(3S1).
+Daffauzan, M. F. (2023). Analisa Penumpang Bus Transjakarta dengan Metode K-Means. Journal Computer Science and Information Systems: J-Cosys, 3(2), 61-64.
+Kementerian Perhubungan Republik Indonesia, Rencana Induk Transportasi Nasional (RITN), Jakarta, 2021.
+Direktorat Jenderal Perhubungan Darat, Pedoman Perencanaan dan Evaluasi Angkutan Umum Perkotaan, Jakarta, 2020.
+Badan Pusat Statistik, Statistik Transportasi Perkotaan Indonesia, Jakarta, 2023.
+Pusat Data dan Teknologi Informasi Kementerian Perhubungan, Pemanfaatan Data Transportasi Berbasis Elektronik untuk Perencanaan Transportasi, Jakarta, 2022.
+Deliverable 3.2 Roadmap TransJakarta. (2023). Roadmap Pengembangan Jaringan TransJakarta. Pemerintah Provinsi DKI Jakarta.
+ITDP Indonesia. (2023). Laporan Evaluasi dan Pengembangan Sistem TransJakarta. Institute for Transportation and Development Policy Indonesia.
+PT Transportasi Jakarta. (2023). Laporan Tahunan PT Transportasi Jakarta Tahun 2023. Jakarta: PT Transportasi Jakarta.
+Pemerintah Provinsi DKI Jakarta. (2020). Peraturan Gubernur DKI Jakarta Nomor 63 Tahun 2020 tentang Penugasan kepada BUMD untuk Penyelenggaraan Sistem Integrasi Pembayaran Antarmoda Transportasi. Jakarta: Pemprov DKI Jakarta.
+Southeast Asia Infrastructure. (2023). Urban Transport Network Overview: TransJakarta System.
+Wibowo, A., Makruf, M., Virdyna, I., dan Venna, F. C.,“Penentuan Klaster Koridor TransJakarta dengan Metode Majority Voting pada Algoritma Data Mining,”Jurnal RESTI (Rekayasa Sistem dan Teknologi Informasi), vol. 5, no. 3, pp. 565–575, 2021.
+Radhi, M., Amalia, A., Sitompul, D. R. H., et al.,“Analisis Big Data dengan Metode Exploratory Data Analysis dan Visualisasi,”Jurnal Sistem Informasi dan Ilmu Komputer, vol. 4, no. 2, 2021.
+Daffauzan, M. F.,“Analisa Penumpang Bus TransJakarta dengan Metode Data Mining,”J-Cosys: Journal of Computer Systems, vol. 3, no. 2, pp. 61–64, 2023.
+Badan Pusat Statistik,Statistik Transportasi Perkotaan Indonesia, Jakarta, 2023.
+Fadillah, A. P. (2020). Penerapan metode CRISP-DM untuk prediksi kelulusan mahasiswa sesuai target waktu studi.https://media.neliti.com/media/publications/133327-ID-penerapan-metode-crisp-dm-untuk-prediksi.pdf
+Yudiana, Y., Agustina, A., & Khofifah. (2023). Data mining for predicting the amount of coffee production using CRISP-DM method. Jurnal Techno Nusa Mandiri, 17(1), 1–8.https://doi.org/10.33480/techno.v17i1.1240
+Iswavigra, D. U., Zen, L. E., Okfalisa, & Hanim, H. (2023). Marketing strategy UMKM dengan pendekatan CRISP-DM. Jurnal Informasi dan Teknologi.https://doi.org/10.37034/jidt.v5i1.260
+Rahara, R. (2024). Employee credit classification analysis using decision tree based on CRISP-DM.https://www.e-journal.stmiklombok.ac.id/index.php/jire/article/download/1278/349
+Fraley, C., Raftery, A. E., Murphy, T. B., & Scrucca, L. (2016).mclust 5: Clustering, classification and density estimation using Gaussian finite mixture models.The R Journal, 8(1), 289–317.https://doi.org/10.32614/RJ-2016-021.
+Agung, N. (2025). Penerapan Gaussian Mixture Models untuk Clustering Data Industri. Universitas.
+Deofanny, N. F., et al. (2024). Pemodelan Distribusi Kecepatan Angin Menggunakan Gaussian Mixture Model.. Universitas.
+Lathifah, S. M. (2023). Pengaruh Faktor Ekonomi dan Faktor Sosial Pada Pola Pengguna Transportasi Publik Transjakarta di Jakarta Menggunakan Metode Association Rule. Program Studi Ekonomi Pembangunan Fakultas Ekonomi dan Bisnis Universitas Islam Negeri Syarif Hidayatullah, 13(1), 104-116.
+Nasution, et al. (2025). Evaluasi Kinerja Clustering Menggunakan Gaussian Mixture Model berdasarkan Silhouette Score. Universitas.
+Nugrahanti, D. A. (2022). Implementasi Algoritma FP-Growth dalam Mengekstraksi Aturan Asosiasi.Universitas.
+Reynaldi, et al. (2025). Penerapan Algoritma K-Means Clustering pada Data Transaksi Tap-in dan Tap-out TransJakarta. Universitas.
