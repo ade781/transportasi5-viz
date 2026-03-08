@@ -16,32 +16,11 @@ library(scales)
 library(tidyr)
 library(RColorBrewer)
 
-# Set paths untuk output (otomatis berdasarkan lokasi script/project aktif)
-script_args <- commandArgs(trailingOnly = FALSE)
-file_arg <- grep("^--file=", script_args, value = TRUE)
-if (length(file_arg) > 0) {
-    script_path <- sub("^--file=", "", file_arg[1])
-    base_dir <- dirname(normalizePath(script_path, winslash = "/", mustWork = TRUE))
-} else {
-    wd <- normalizePath(getwd(), winslash = "/", mustWork = FALSE)
-    base_dir <- if (basename(wd) == "r-gmm") wd else file.path(wd, "r-gmm")
-}
-
+# Set paths untuk output
+base_dir <- "C:/Users/ad/OneDrive/Dokumen/ad/COBA/transportasi5 viz/r-gmm"
 hasil_dir <- file.path(base_dir, "hasil")
 visualisasi_dir <- file.path(base_dir, "visualisasi")
-parent_dir <- dirname(base_dir)
-
-if (!dir.exists(hasil_dir)) {
-    stop("Folder hasil tidak ditemukan: ", hasil_dir)
-}
-
-dir.create(visualisasi_dir, recursive = TRUE, showWarnings = FALSE)
-
-# Bersihkan file PNG lama agar folder visualisasi benar-benar terbarui
-old_png <- list.files(visualisasi_dir, pattern = "\\.png$", full.names = TRUE)
-if (length(old_png) > 0) {
-    invisible(file.remove(old_png))
-}
+parent_dir <- "C:/Users/ad/OneDrive/Dokumen/ad/COBA/transportasi5 viz"
 
 cat("=", strrep("=", 59), "\n")
 cat("STEP 8: VISUALISASI GMM\n")
@@ -56,17 +35,11 @@ theme_thesis <- theme_minimal(base_size = 12) +
         panel.grid.minor = element_blank()
     )
 
-build_cluster_colors <- function(cluster_ids) {
-    cluster_ids <- sort(unique(as.integer(cluster_ids)))
-    n_cluster <- length(cluster_ids)
-    if (n_cluster <= 9) {
-        cols <- brewer.pal(max(3, n_cluster), "Set1")[seq_len(n_cluster)]
-    } else {
-        cols <- scales::hue_pal()(n_cluster)
-    }
-    names(cols) <- as.character(cluster_ids)
-    cols
-}
+# Warna cluster
+cluster_colors <- c(
+    "1" = "#E41A1C", "2" = "#377EB8", "3" = "#4DAF4A",
+    "4" = "#FF7F00", "5" = "#984EA3"
+)
 
 # ==============================================================================
 # VIS 1: BIC Elbow Plot
@@ -74,22 +47,10 @@ build_cluster_colors <- function(cluster_ids) {
 cat("1. BIC Elbow Plot...\n")
 
 bic_df <- read_csv(file.path(hasil_dir, "04_bic_best_per_k.csv"), show_col_types = FALSE)
-selection_meta_path <- file.path(hasil_dir, "04_model_selection.csv")
-params_path <- file.path(hasil_dir, "05_gmm_parameters.csv")
-
-selected_k <- NA_integer_
-if (file.exists(selection_meta_path)) {
-    sel_meta <- read_csv(selection_meta_path, show_col_types = FALSE)
-    if ("selected_k" %in% names(sel_meta) && nrow(sel_meta) > 0) {
-        selected_k <- as.integer(sel_meta$selected_k[1])
-    }
-}
-if (is.na(selected_k) && file.exists(params_path)) {
-    gmm_params <- read_csv(params_path, show_col_types = FALSE)
-    selected_k <- nrow(gmm_params)
-}
-if (is.na(selected_k) || !(selected_k %in% bic_df$K)) {
-    selected_k <- bic_df %>% filter(BIC == max(BIC, na.rm = TRUE)) %>% slice(1) %>% pull(K)
+selection_path <- file.path(hasil_dir, "04_model_selection.csv")
+selected_k <- 5
+if (file.exists(selection_path)) {
+    selected_k <- read_csv(selection_path, show_col_types = FALSE)$selected_k[[1]]
 }
 
 p1 <- ggplot(bic_df, aes(x = K, y = BIC)) +
@@ -143,8 +104,6 @@ ggsave(file.path(visualisasi_dir, "02_bic_delta.png"), p2, width = 10, height = 
 cat("3. Distribusi Cluster...\n")
 
 profiles <- read_csv(file.path(hasil_dir, "06_cluster_profiles.csv"), show_col_types = FALSE)
-cluster_colors <- build_cluster_colors(profiles$cluster)
-total_obs <- sum(profiles$n_obs, na.rm = TRUE)
 profiles <- profiles %>%
     mutate(cluster_label = paste0("Cluster ", cluster, "\n", label))
 
@@ -160,7 +119,7 @@ p3 <- ggplot(profiles, aes(x = reorder(label, -n_obs), y = n_obs, fill = factor(
     scale_fill_manual(values = cluster_colors, name = "Cluster") +
     labs(
         title = "Distribusi Jumlah Observasi per Cluster",
-        subtitle = paste0("Total ", format(total_obs, big.mark = "."), " transaksi TransJakarta April 2023"),
+        subtitle = "Total 168.132 transaksi TransJakarta April 2023",
         x = "Cluster", y = "Jumlah Observasi"
     ) +
     scale_y_continuous(labels = scales::comma) +
@@ -211,21 +170,7 @@ ggsave(file.path(visualisasi_dir, "04_cluster_heatmap.png"), p4, width = 12, hei
 cat("5. Distribusi Jam Tap-In per Cluster...\n")
 
 assignments <- read_csv(file.path(hasil_dir, "05_cluster_assignments.csv"), show_col_types = FALSE)
-
-candidate_data_paths <- c(
-    file.path(parent_dir, "datacleancoba_gmm.csv"),
-    file.path(parent_dir, "data_clean.csv"),
-    file.path(parent_dir, "datacleancoba.csv"),
-    file.path(getwd(), "datacleancoba_gmm.csv"),
-    file.path(getwd(), "data_clean.csv"),
-    file.path(getwd(), "datacleancoba.csv")
-)
-data_path <- candidate_data_paths[file.exists(candidate_data_paths)][1]
-if (is.na(data_path)) {
-    stop("File data_clean.csv / datacleancoba.csv tidak ditemukan di project.")
-}
-
-df_orig <- read_csv(data_path, show_col_types = FALSE)
+df_orig <- read_csv(file.path(parent_dir, "data_clean.csv"), show_col_types = FALSE)
 df_orig$cluster <- assignments$cluster
 df_orig <- df_orig %>%
     left_join(profiles %>% select(cluster, label), by = "cluster") %>%
@@ -265,27 +210,19 @@ p6 <- ggplot(eval_plot_data, aes(x = K)) +
     geom_line(aes(y = BIC_norm_scaled, color = "BIC (normalized)"), linewidth = 1.2) +
     geom_point(aes(y = BIC_norm_scaled, color = "BIC (normalized)"), size = 3) +
     geom_vline(xintercept = selected_k, linetype = "dashed", color = "red", linewidth = 0.8) +
+    annotate("text",
+        x = selected_k + 0.2, y = max(eval_plot_data$BIC_norm_scaled) * 0.95,
+        label = paste0("K=", selected_k, " (selected)"), color = "red", fontface = "bold", hjust = 0
+    ) +
     labs(
-        title = "Model Selection: BIC Comparison",
-        subtitle = paste0("K=", selected_k, " ditandai sebagai K terpilih"),
+        title = "Model Selection: BIC Comparison for K=4,5,6",
+        subtitle = "K=5 dipilih berdasarkan BIC dan interpretability",
         x = "Jumlah Cluster (K)", y = "BIC (normalized)",
         color = "Metrik"
     ) +
-    scale_x_continuous(breaks = sort(unique(eval_plot_data$K))) +
+    scale_x_continuous(breaks = 4:6) +
     scale_color_manual(values = c("BIC (normalized)" = "#2166AC")) +
     theme_thesis
-
-if (selected_k %in% eval_plot_data$K) {
-    p6 <- p6 + annotate(
-        "text",
-        x = selected_k + 0.2,
-        y = max(eval_plot_data$BIC_norm_scaled, na.rm = TRUE) * 0.95,
-        label = paste0("K=", selected_k, " (terpilih)"),
-        color = "red",
-        fontface = "bold",
-        hjust = 0
-    )
-}
 
 ggsave(file.path(visualisasi_dir, "06_evaluation_metrics.png"), p6, width = 10, height = 6, dpi = 300)
 
@@ -308,7 +245,7 @@ p7 <- ggplot(df_sample, aes(
         aes(color = factor(cluster)),
         geom = "path",
         type = "norm",
-        linewidth = 1,
+        size = 1,
         alpha = 0.3,
         level = 0.95,
         show.legend = FALSE

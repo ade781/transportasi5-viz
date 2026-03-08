@@ -15,36 +15,14 @@ cat("=", strrep("=", 59), "\n")
 cat("STEP 1: LOAD & EKSPLORASI DATA\n")
 cat("=", strrep("=", 59), "\n\n")
 
-# Set paths untuk output (otomatis berdasarkan lokasi script/project aktif)
-script_args <- commandArgs(trailingOnly = FALSE)
-file_arg <- grep("^--file=", script_args, value = TRUE)
-if (length(file_arg) > 0) {
-    script_path <- sub("^--file=", "", file_arg[1])
-    base_dir <- dirname(normalizePath(script_path, winslash = "/", mustWork = TRUE))
-} else {
-    wd <- normalizePath(getwd(), winslash = "/", mustWork = FALSE)
-    base_dir <- if (basename(wd) == "r-gmm") wd else file.path(wd, "r-gmm")
-}
-hasil_dir <- file.path(base_dir, "hasil")
-parent_dir <- dirname(base_dir)
-
-dir.create(hasil_dir, recursive = TRUE, showWarnings = FALSE)
-
 # -- Load data --
-candidate_data_paths <- c(
-    file.path(parent_dir, "datacleancoba_gmm.csv"),
-    file.path(parent_dir, "datacleancoba.csv"),
-    file.path(parent_dir, "data_clean.csv"),
-    file.path(getwd(), "datacleancoba_gmm.csv"),
-    file.path(getwd(), "datacleancoba.csv"),
-    file.path(getwd(), "data_clean.csv")
-)
-data_path <- candidate_data_paths[file.exists(candidate_data_paths)][1]
-if (is.na(data_path)) {
-    stop("File data_clean.csv / datacleancoba.csv tidak ditemukan di project.")
-}
-
+# Path relatif dari folder r-gmm ke data_clean.csv
+data_path <- "C:/Users/ad/OneDrive/Dokumen/ad/COBA/transportasi5 viz/data_clean.csv"
 df <- read_csv(data_path, show_col_types = FALSE)
+
+# Set paths untuk output
+base_dir <- "C:/Users/ad/OneDrive/Dokumen/ad/COBA/transportasi5 viz/r-gmm"
+hasil_dir <- file.path(base_dir, "hasil")
 
 cat("Dimensi data:", nrow(df), "baris x", ncol(df), "kolom\n\n")
 cat("Kolom yang tersedia:\n")

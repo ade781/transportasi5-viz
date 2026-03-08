@@ -59,7 +59,6 @@ function buildClusterEdaNotes(profile) {
     const hour = Number(profile.mean_tapIn_hour) || 0
     const duration = Number(profile.mean_duration_min) || 0
     const weekend = Number(profile.pct_weekend) || 0
-    const commuter = Number(profile.pct_commuter) || 0
     const trips = Number(profile.mean_n_trips) || 0
     const days = Number(profile.mean_n_days_month) || 0
 
@@ -70,10 +69,7 @@ function buildClusterEdaNotes(profile) {
     notes.push(`Aktivitas dominan di ${timeBand} (jam rata-rata ${hour.toFixed(2)}).`)
 
     const intensity = trips >= 3 ? 'tinggi' : trips >= 2 ? 'sedang' : 'rendah'
-    notes.push(`Intensitas perjalanan ${intensity}: ${trips.toFixed(2)} trip/bulan, ${days.toFixed(2)} hari aktif/bulan.`)
-
-    const riderType = commuter >= 80 ? 'commuter rutin' : commuter <= 20 ? 'pengguna kasual' : 'campuran commuter-kasual'
-    notes.push(`Komposisi penumpang cenderung ${riderType} (${commuter.toFixed(2)}% commuter).`)
+    notes.push(`Intensitas perjalanan ${intensity}: ${trips.toFixed(2)} trip per hari, dengan ${days.toFixed(2)} hari aktif per bulan.`)
 
     const weekendPattern = weekend >= 50 ? 'dominan akhir pekan' : weekend <= 15 ? 'dominan hari kerja' : 'campuran weekday-weekend'
     notes.push(`Pola waktu penggunaan ${weekendPattern} (${weekend.toFixed(2)}% weekend).`)
@@ -82,6 +78,21 @@ function buildClusterEdaNotes(profile) {
     notes.push(`Durasi perjalanan relatif ${durBand} (${duration.toFixed(2)} menit).`)
 
     return notes
+}
+
+function normalizeBicBestRows(rows) {
+    const normalized = rows.map((row) => ({
+        ...row,
+        displayModelType: row.ModelType,
+        displayBIC: Number(row.BIC),
+        displayNParam: Number(row.nParam),
+        displayLogLik: Number(row.LogLik),
+    }))
+
+    return normalized.map((row, index) => ({
+        ...row,
+        displayBICDelta: index === 0 ? null : row.displayBIC - normalized[index - 1].displayBIC,
+    }))
 }
 
 export default function GMMPage() {
@@ -114,6 +125,13 @@ export default function GMMPage() {
     }, [])
 
     const selectedMeta = useMemo(() => modelSelection?.[0] || {}, [modelSelection])
+
+    const bicBestDisplay = useMemo(() => normalizeBicBestRows(bicBest), [bicBest])
+
+    const bestBicRow = useMemo(() => {
+        if (!bicBestDisplay.length) return {}
+        return [...bicBestDisplay].sort((a, b) => Number(b.displayBIC) - Number(a.displayBIC))[0] || {}
+    }, [bicBestDisplay])
 
     const selectedK = useMemo(() => {
         const k = Number(selectedMeta.selected_k)
@@ -188,12 +206,12 @@ export default function GMMPage() {
         pct: Number(p.pct_obs) || 0,
     })), [profiles])
 
-    const bicLineData = useMemo(() => bicBest.map(b => ({
+    const bicLineData = useMemo(() => bicBestDisplay.map(b => ({
         K: Number(b.K),
-        BIC: Number(b.BIC),
-        Model: b.ModelType,
-        delta: Number(b.BIC_delta),
-    })), [bicBest])
+        BIC: Number(b.displayBIC),
+        Model: b.displayModelType,
+        delta: b.displayBICDelta,
+    })), [bicBestDisplay])
 
     const heatmapData = useMemo(() => {
         const features = ['mean_tapIn_hour', 'mean_duration_min', 'pct_weekend', 'mean_n_trips', 'mean_n_days_month']
@@ -249,7 +267,7 @@ export default function GMMPage() {
                 <div className="page-header-stats">
                     <StatCard label="Total Observasi" value={totalObs.toLocaleString()} icon="OBS" color="#3498db" />
                     <StatCard label="Jumlah Cluster" value={profiles.length} icon="CLU" color="#e74c3c" />
-                    <StatCard label="Best Model" value={selectedModelType || '-'} sub={selectedK ? `K=${selectedK}` : '-'} icon="MOD" color="#27ae60" />
+                    <StatCard label="Best BIC" value={bestBicRow.displayModelType || '-'} sub={bestBicRow.K ? `K=${bestBicRow.K}` : '-'} icon="MOD" color="#27ae60" />
                     <StatCard label="Cluster Balance" value={bestEval.Cluster_balance?.toFixed(4) || '-'} icon="BAL" color="#9b59b6" />
                 </div>
             </div>
@@ -338,8 +356,8 @@ export default function GMMPage() {
                                             <span className="coc-stat-label">avg durasi</span>
                                         </div>
                                         <div className="coc-stat">
-                                            <span className="coc-stat-val">{Number(p.mean_n_trips).toFixed(1)}</span>
-                                            <span className="coc-stat-label">trip/bulan</span>
+                                            <span className="coc-stat-val">{Number(p.mean_n_trips).toFixed(2)}</span>
+                                            <span className="coc-stat-label">trip per hari</span>
                                         </div>
                                     </div>
                                     <div className="coc-corridor">
@@ -377,6 +395,7 @@ export default function GMMPage() {
                 <>
                     <Section title="BIC per Jumlah Cluster (K)" subtitle="Bayesian Information Criterion - pada mclust, semakin tinggi (kurang negatif) semakin baik">
                         <div className="chart-card">
+                            <div className="chart-card-title">BIC dari 04_bic_best_per_k.csv</div>
                             <ResponsiveContainer width="100%" height={380}>
                                 <ComposedChart data={bicLineData} margin={{ top: 10, right: 40, left: 20, bottom: 10 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -402,7 +421,7 @@ export default function GMMPage() {
                         </div>
                     </Section>
 
-                    <Section title="Semua Model BIC" subtitle="Perbandingan semua tipe model GMM yang diuji">
+                    <Section title="BIC Terbaik per K" subtitle="Diambil langsung dari 04_bic_best_per_k.csv">
                         <div className="table-wrapper" style={{ marginTop: 16 }}>
                             <table className="data-table">
                                 <thead>
@@ -415,13 +434,13 @@ export default function GMMPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {bicAll.map((b, i) => (
-                                        <tr key={i} className={Number(b.K) === Number(selectedK) && String(b.ModelType) === String(selectedModelType) ? 'row-highlight' : ''}>
+                                    {bicBestDisplay.map((b, i) => (
+                                        <tr key={i} className={Number(b.K) === Number(bestBicRow.K) && String(b.displayModelType) === String(bestBicRow.displayModelType) ? 'row-highlight' : ''}>
                                             <td className="td-center">{b.K}</td>
-                                            <td><code>{b.ModelType}</code></td>
-                                            <td className="td-num">{Number(b.BIC).toLocaleString()}</td>
-                                            <td className="td-center">{b.nParam}</td>
-                                            <td className="td-num">{Number(b.LogLik).toLocaleString()}</td>
+                                            <td><code>{b.displayModelType}</code></td>
+                                            <td className="td-num">{Number(b.displayBIC).toLocaleString()}</td>
+                                            <td className="td-center">{Number.isFinite(b.displayNParam) ? b.displayNParam : 'NA'}</td>
+                                            <td className="td-num">{Number.isFinite(b.displayLogLik) ? Number(b.displayLogLik).toLocaleString() : 'NA'}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -441,21 +460,20 @@ export default function GMMPage() {
                                     <div className="cdc-cluster-label">{p.label}</div>
                                     <div className="cdc-cluster-count">{Number(p.n_obs).toLocaleString()} observasi ({p.pct_obs}%)</div>
                                 </div>
-                                <div className="cdc-body">
-                                    <div className="cdc-section">
-                                        <div className="cdc-section-title">Waktu Perjalanan</div>
-                                        <div className="cdc-row"><span>Jam Tap-In</span><strong>{Number(p.mean_tapIn_hour).toFixed(2)} ± {Number(p.sd_tapIn_hour).toFixed(2)}</strong></div>
-                                        <div className="cdc-row"><span>Durasi</span><strong>{Number(p.mean_duration_min).toFixed(2)} ± {Number(p.sd_duration_min).toFixed(2)} menit</strong></div>
-                                    </div>
-                                    <div className="cdc-section">
-                                        <div className="cdc-section-title">Intensitas</div>
-                                        <div className="cdc-row"><span>Trip/bulan</span><strong>{Number(p.mean_n_trips).toFixed(2)}</strong></div>
+                                    <div className="cdc-body">
+                                        <div className="cdc-section">
+                                            <div className="cdc-section-title">Waktu Perjalanan</div>
+                                        <div className="cdc-row"><span>Jam Tap-In</span><strong>Rata-rata {Number(p.mean_tapIn_hour).toFixed(2)} jam</strong></div>
+                                        <div className="cdc-row"><span>Durasi</span><strong>Rata-rata {Number(p.mean_duration_min).toFixed(2)} menit</strong></div>
+                                        </div>
+                                        <div className="cdc-section">
+                                            <div className="cdc-section-title">Intensitas</div>
+                                        <div className="cdc-row"><span>Trip per hari</span><strong>{Number(p.mean_n_trips).toFixed(2)}</strong></div>
                                         <div className="cdc-row"><span>Hari aktif/bulan</span><strong>{Number(p.mean_n_days_month).toFixed(2)}</strong></div>
-                                    </div>
+                                        </div>
                                     <div className="cdc-section">
                                         <div className="cdc-section-title">Komposisi</div>
                                         <div className="cdc-row"><span>Weekend</span><strong>{Number(p.pct_weekend).toFixed(2)}%</strong></div>
-                                        <div className="cdc-row"><span>Commuter</span><strong>{Number(p.pct_commuter).toFixed(2)}%</strong></div>
                                     </div>
                                     <div className="cdc-section">
                                         <div className="cdc-section-title">Top Koridor</div>

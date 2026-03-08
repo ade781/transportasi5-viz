@@ -12,81 +12,29 @@ library(readr)
 library(dplyr)
 library(tidyr)
 
-# Set paths untuk output (otomatis berdasarkan lokasi script/project aktif)
-script_args <- commandArgs(trailingOnly = FALSE)
-file_arg <- grep("^--file=", script_args, value = TRUE)
-if (length(file_arg) > 0) {
-    script_path <- sub("^--file=", "", file_arg[1])
-    base_dir <- dirname(normalizePath(script_path, winslash = "/", mustWork = TRUE))
-} else {
-    wd <- normalizePath(getwd(), winslash = "/", mustWork = FALSE)
-    base_dir <- if (basename(wd) == "r-gmm") wd else file.path(wd, "r-gmm")
-}
+# Set paths untuk output
+base_dir <- "C:/Users/ad/OneDrive/Dokumen/ad/COBA/transportasi5 viz/r-gmm"
 hasil_dir <- file.path(base_dir, "hasil")
 visualisasi_dir <- file.path(base_dir, "visualisasi")
-parent_dir <- dirname(base_dir)
-
-dir.create(hasil_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(visualisasi_dir, recursive = TRUE, showWarnings = FALSE)
+parent_dir <- "C:/Users/ad/OneDrive/Dokumen/ad/COBA/transportasi5 viz"
 
 cat("=", strrep("=", 59), "\n")
 cat("STEP 6: PROFILING & LABELING CLUSTER\n")
 cat("=", strrep("=", 59), "\n\n")
 
 # -- Load data --
-candidate_data_paths <- c(
-    file.path(parent_dir, "datacleancoba_gmm.csv"),
-    file.path(parent_dir, "data_clean.csv"),
-    file.path(parent_dir, "datacleancoba.csv"),
-    file.path(getwd(), "datacleancoba_gmm.csv"),
-    file.path(getwd(), "data_clean.csv"),
-    file.path(getwd(), "datacleancoba.csv")
-)
-data_path <- candidate_data_paths[file.exists(candidate_data_paths)][1]
-if (is.na(data_path)) {
-    stop("File data_clean.csv / datacleancoba.csv tidak ditemukan di project.")
-}
-
-df <- read_csv(data_path, show_col_types = FALSE)
+df <- read_csv(file.path(parent_dir, "data_clean.csv"), show_col_types = FALSE)
 assignments <- read_csv(file.path(hasil_dir, "05_cluster_assignments.csv"), show_col_types = FALSE)
 
 cat("Data asli:", nrow(df), "baris\n")
 cat("Assignments:", nrow(assignments), "baris\n\n")
 
-# Validasi kolom yang dibutuhkan
-if (!"transID" %in% names(assignments)) {
-    stop("Kolom transID tidak ditemukan di 05_cluster_assignments.csv")
-}
-
-if (!"cluster" %in% names(assignments)) {
-    stop("Kolom cluster tidak ditemukan di 05_cluster_assignments.csv")
-}
-
-required_feats <- c(
-    "z_tapIn_hour", "z_duration_minutes", "z_n_trips", "z_n_days_month"
-)
-missing_feats <- setdiff(required_feats, names(assignments))
-if (length(missing_feats) > 0) {
-    stop("Fitur assignment tidak lengkap: ", paste(missing_feats, collapse = ", "))
-}
-
-if (!"transID" %in% names(df)) {
-    stop("Kolom transID tidak ditemukan di data asli. Pastikan step 01_load_data.R sudah dijalankan dengan benar.")
-}
-
-# Gabungkan berdasarkan transID (proper join key, bukan row number)
+# Gabungkan cluster ke data asli dan z-scores
+df$cluster <- assignments$cluster
 df <- df %>%
-    left_join(
-        assignments %>%
-            select(transID, cluster, all_of(required_feats)),
-        by = "transID"
+    bind_cols(
+        assignments %>% select(z_tapIn_hour, z_duration_minutes, z_n_trips, z_n_days_month)
     )
-
-if (any(is.na(df$cluster))) {
-    stop("Terdapat observasi tanpa cluster setelah proses join via transID. Check data consistency!")
-}
-
-df$cluster <- as.integer(df$cluster)
 
 # ==============================================================================
 # 6a. Profiling: Statistik per cluster
@@ -163,6 +111,13 @@ cat(strrep("-", 80), "\n")
 label_map <- profiles %>% select(cluster, label)
 df_labeled <- df %>%
     left_join(label_map, by = "cluster")
+
+# Tambahkan z-scores
+df_labeled <- df_labeled %>%
+    left_join(
+        assignments %>% select(obs_id, z_tapIn_hour, z_duration_minutes, z_n_trips, z_n_days_month),
+        by = c("trip_num" = "obs_id")
+    )
 
 # -- Simpan hasil --
 write_csv(profiles, file.path(hasil_dir, "06_cluster_profiles.csv"))
