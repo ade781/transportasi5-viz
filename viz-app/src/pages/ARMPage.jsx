@@ -186,6 +186,9 @@ export default function ARMPage() {
                 map.set(n.corridor, n)
             }
         })
+        if (!map.has(rhs)) {
+            map.set(rhs, { corridor: rhs, n_shared_stops: 0 })
+        }
         if (!map.has(selectedRuleData.lhs)) {
                 map.set(selectedRuleData.lhs, { corridor: selectedRuleData.lhs, n_shared_stops: 0 })
         }
@@ -193,10 +196,12 @@ export default function ARMPage() {
             ...x,
             ...(metricsByLhs.get(x.corridor) || { support: null, confidence: null, lift_local: null }),
         }))
-            .filter((x) => x.corridor === selectedRuleData.lhs || x.lift_local !== null)
+            .filter((x) => x.corridor === selectedRuleData.lhs || x.corridor === rhs || x.lift_local !== null)
             .sort((a, b) => {
             if (a.corridor === selectedRuleData.lhs) return -1
             if (b.corridor === selectedRuleData.lhs) return 1
+            if (a.corridor === rhs) return -1
+            if (b.corridor === rhs) return 1
             const liftDiff = (Number(b.lift_local) || -Infinity) - (Number(a.lift_local) || -Infinity)
             if (Number.isFinite(liftDiff) && liftDiff !== 0) return liftDiff
             const confDiff = (Number(b.confidence) || -Infinity) - (Number(a.confidence) || -Infinity)
@@ -205,6 +210,82 @@ export default function ARMPage() {
             if (Number.isFinite(supDiff) && supDiff !== 0) return supDiff
             return String(a.corridor).localeCompare(String(b.corridor))
         })
+        return unique.slice(0, 5)
+    }, [selectedRuleData, corridorConnectivity, halteRows, rawGlobalMin, rawClusterMin, viewMode])
+
+    const connectedToSameTapIn = useMemo(() => {
+        if (!selectedRuleData?.lhs) return []
+        const lhsBase = normalizeCorridor(selectedRuleData.lhs)
+        const metricScope = viewMode === 'cluster'
+            ? rawClusterMin.filter((r) => Number(r.cluster) === Number(selectedRuleData.cluster))
+            : rawGlobalMin
+
+        const metricsByRhs = new Map()
+        metricScope
+            .filter(r => normalizeCorridor(r.lhs) === lhsBase)
+            .forEach((r) => {
+                const rhs = normalizeCorridor(r.rhs)
+                const row = {
+                    support: Number(r.support) || 0,
+                    confidence: Number(r.confidence) || 0,
+                    lift_local: Number(r.lift) || 0,
+                }
+                const prev = metricsByRhs.get(rhs)
+                if (!prev || row.lift_local > prev.lift_local) metricsByRhs.set(rhs, row)
+            })
+
+        const neighborsFromConnectivity = corridorConnectivity
+            .filter((c) => c.lhs === lhsBase || c.rhs === lhsBase)
+            .map((c) => ({
+                corridor: c.lhs === lhsBase ? c.rhs : c.lhs,
+            }))
+            .filter((x) => x.corridor && x.corridor !== lhsBase)
+
+        const lhsStops = new Set(
+            halteRows
+                .filter((h) => h.corridor === lhsBase)
+                .map((h) => h.stop)
+        )
+        const sharedCounts = new Map()
+        if (lhsStops.size > 0) {
+            halteRows.forEach((h) => {
+                if (h.corridor !== lhsBase && lhsStops.has(h.stop)) {
+                    const prev = sharedCounts.get(h.corridor) || 0
+                    sharedCounts.set(h.corridor, prev + 1)
+                }
+            })
+        }
+        const neighborsFromHalte = Array.from(sharedCounts.entries()).map(([corridor, n]) => ({
+            corridor,
+            n_shared_stops: n
+        }))
+
+        const map = new Map()
+        neighborsFromConnectivity.concat(neighborsFromHalte).forEach((n) => {
+            const prev = map.get(n.corridor)
+            if (!prev || n.n_shared_stops > prev.n_shared_stops) {
+                map.set(n.corridor, n)
+            }
+        })
+        if (!map.has(lhsBase)) {
+            map.set(lhsBase, { corridor: lhsBase, n_shared_stops: 0 })
+        }
+        const unique = Array.from(map.values()).map((x) => ({
+            ...x,
+            ...(metricsByRhs.get(x.corridor) || { support: null, confidence: null, lift_local: null }),
+        }))
+            .filter((x) => x.corridor === lhsBase || x.lift_local !== null)
+            .sort((a, b) => {
+                if (a.corridor === lhsBase) return -1
+                if (b.corridor === lhsBase) return 1
+                const liftDiff = (Number(b.lift_local) || -Infinity) - (Number(a.lift_local) || -Infinity)
+                if (Number.isFinite(liftDiff) && liftDiff !== 0) return liftDiff
+                const confDiff = (Number(b.confidence) || -Infinity) - (Number(a.confidence) || -Infinity)
+                if (Number.isFinite(confDiff) && confDiff !== 0) return confDiff
+                const supDiff = (Number(b.support) || -Infinity) - (Number(a.support) || -Infinity)
+                if (Number.isFinite(supDiff) && supDiff !== 0) return supDiff
+                return String(a.corridor).localeCompare(String(b.corridor))
+            })
         return unique.slice(0, 5)
     }, [selectedRuleData, corridorConnectivity, halteRows, rawGlobalMin, rawClusterMin, viewMode])
 
@@ -761,7 +842,40 @@ export default function ARMPage() {
                                                     {connectedToSameTapOut.map((x, idx) => (
                                                         <tr key={`${x.corridor}-${idx}`}>
                                                             <td className="td-corridor">{x.corridor}</td>
-                                                            <td>{x.corridor === filteredRules[selectedRule].lhs ? 'Rule terpilih' : 'Koridor lain terhubung'}</td>
+                                                            <td>{x.corridor === filteredRules[selectedRule].lhs ? 'Rule terpilih' : x.corridor === filteredRules[selectedRule].rhs ? 'Koridor acuan (RHS)' : 'Koridor lain terhubung'}</td>
+                                                            <td className="td-num">{Number.isFinite(x.support) ? `${(x.support * 100).toFixed(3)}%` : '-'}</td>
+                                                            <td className="td-num">{Number.isFinite(x.confidence) ? `${(x.confidence * 100).toFixed(2)}%` : '-'}</td>
+                                                            <td className="td-num">{Number.isFinite(x.lift_local) ? x.lift_local.toFixed(2) : '-'}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                                <div style={{ marginTop: 16 }}>
+                                    <div className="rdp-metric-label" style={{ marginBottom: 8 }}>
+                                        Koridor yang terhubung ke tap-in corridor: <strong>{filteredRules[selectedRule].lhs}</strong>
+                                    </div>
+                                    {connectedToSameTapIn.length === 0 ? (
+                                        <div className="rdp-metric-desc">Tidak ada koridor pada scope saat ini.</div>
+                                    ) : (
+                                        <div className="table-wrapper">
+                                            <table className="data-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Koridor</th>
+                                                        <th>Status</th>
+                                                        <th>Support</th>
+                                                        <th>Confidence</th>
+                                                        <th>Lift Lokal</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {connectedToSameTapIn.map((x, idx) => (
+                                                        <tr key={`${x.corridor}-${idx}`}>
+                                                            <td className="td-corridor">{x.corridor}</td>
+                                                            <td>{x.corridor === filteredRules[selectedRule].lhs ? 'Koridor acuan (LHS)' : 'Koridor lain terhubung'}</td>
                                                             <td className="td-num">{Number.isFinite(x.support) ? `${(x.support * 100).toFixed(3)}%` : '-'}</td>
                                                             <td className="td-num">{Number.isFinite(x.confidence) ? `${(x.confidence * 100).toFixed(2)}%` : '-'}</td>
                                                             <td className="td-num">{Number.isFinite(x.lift_local) ? x.lift_local.toFixed(2) : '-'}</td>
