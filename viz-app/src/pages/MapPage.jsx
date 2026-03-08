@@ -158,6 +158,8 @@ export default function MapPage() {
 
     // right sidebar
     const [rightSidebarOpen, setRightSidebarOpen] = useState(false)
+    const rightSidebarContentRef = useRef(null)
+    const halteItemRefs = useRef(new globalThis.Map())
 
     // map-specific state
     const mapRef = useRef(null)
@@ -171,12 +173,14 @@ export default function MapPage() {
     useEffect(() => {
         Promise.all([
             loadCSV('/data/halte.csv'),
-            loadCSV('/data/rules_all.csv'),
-            loadCSV('/data/rules_global.csv'),
+            loadCSV('/data/rules_all_cross.csv'),
+            loadCSV('/data/rules_global_cross.csv'),
             loadCSV('/data/cluster_stats.csv'),
         ]).then(([h, ra, rg, cs]) => {
             setHalte(normalizeCorridorField(h, 'corridorName'))
-            const norm = rules => rules.map(r => ({ ...r, lhs: normalizeCorridor(r.lhs), rhs: normalizeCorridor(r.rhs) }))
+            const norm = rules => rules
+                .map(r => ({ ...r, lhs: normalizeCorridor(r.lhs), rhs: normalizeCorridor(r.rhs) }))
+                .filter(r => r.lhs && r.rhs && r.lhs !== r.rhs)
             setRulesAll(filterRulesByMaxSupportConfidence(norm(ra), 0.8))
             setRulesGlobal(filterRulesByMaxSupportConfidence(norm(rg), 0.8))
             setClusterStats(cs)
@@ -351,6 +355,27 @@ export default function MapPage() {
         return { type: 'FeatureCollection', features }
     }, [selectedRule, ruleHalteLHS, ruleHalteRHS])
 
+    const flyToHalte = useCallback((h) => {
+        if (!mapRef.current || !h || h.latitude == null || h.longitude == null) return
+        mapRef.current.flyTo({
+            center: [h.longitude, h.latitude],
+            zoom: Math.max(viewState.zoom || 11, 13),
+            duration: 700,
+            essential: true,
+        })
+    }, [viewState.zoom])
+
+    useEffect(() => {
+        if (!selectedHalte) return
+        const key = `${selectedHalte.corridorName}__${selectedHalte.tapInStopsName}`
+        const el = halteItemRefs.current.get(key)
+        if (el && typeof el.scrollIntoView === 'function') {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        } else if (rightSidebarContentRef.current) {
+            rightSidebarContentRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+        }
+    }, [selectedHalte, selectedRule])
+
     /* ── event handlers ── */
     const handleRuleClick = (idx) => {
         if (selectedRuleIdx === idx) {
@@ -371,7 +396,8 @@ export default function MapPage() {
     const handleHalteClick = useCallback((h) => {
         setSelectedHalte(h)
         setRightSidebarOpen(true)
-    }, [])
+        flyToHalte(h)
+    }, [flyToHalte])
 
     /* ── map click ── */
     const handleMapClick = useCallback((e) => {
@@ -650,7 +676,7 @@ export default function MapPage() {
                 </div>
 
                 {selectedRule ? (
-                    <div className="right-sidebar-content">
+                    <div className="right-sidebar-content" ref={rightSidebarContentRef}>
                         <div className="rs-section">
                             <div className="rs-title">📊 Detail Rule</div>
                             <div className="rs-rule-display">
@@ -684,9 +710,18 @@ export default function MapPage() {
                                 </div>
                             )}
                             <div className="rs-subtitle">🏆 Top 3 Halte</div>
-                            <div className="rs-top-halte">
-                                {topHalteLHS.map((h, i) => (
-                                    <div key={i} className={`rs-halte-item ${selectedHalte?.tapInStopsName === h.tapInStopsName ? 'active' : ''}`} onClick={() => handleHalteClick(h)}>
+                                <div className="rs-top-halte">
+                                    {topHalteLHS.map((h, i) => (
+                                    <div
+                                        key={i}
+                                        ref={(el) => {
+                                            const key = `${h.corridorName}__${h.tapInStopsName}`
+                                            if (el) halteItemRefs.current.set(key, el)
+                                            else halteItemRefs.current.delete(key)
+                                        }}
+                                        className={`rs-halte-item ${selectedHalte?.tapInStopsName === h.tapInStopsName ? 'active' : ''}`}
+                                        onClick={() => handleHalteClick(h)}
+                                    >
                                         <span className="rs-halte-rank">#{i + 1}</span>
                                         <div className="rs-halte-info">
                                             <span className="rs-halte-name">{h.tapInStopsName}</span>
@@ -708,7 +743,16 @@ export default function MapPage() {
                             <div className="rs-subtitle">🏆 Top 3 Halte</div>
                             <div className="rs-top-halte">
                                 {topHalteRHS.map((h, i) => (
-                                    <div key={i} className={`rs-halte-item ${selectedHalte?.tapInStopsName === h.tapInStopsName ? 'active' : ''}`} onClick={() => handleHalteClick(h)}>
+                                    <div
+                                        key={i}
+                                        ref={(el) => {
+                                            const key = `${h.corridorName}__${h.tapInStopsName}`
+                                            if (el) halteItemRefs.current.set(key, el)
+                                            else halteItemRefs.current.delete(key)
+                                        }}
+                                        className={`rs-halte-item ${selectedHalte?.tapInStopsName === h.tapInStopsName ? 'active' : ''}`}
+                                        onClick={() => handleHalteClick(h)}
+                                    >
                                         <span className="rs-halte-rank">#{i + 1}</span>
                                         <div className="rs-halte-info">
                                             <span className="rs-halte-name">{h.tapInStopsName}</span>
@@ -724,7 +768,18 @@ export default function MapPage() {
                                 <div className="rs-title" style={{ color: SHARED_COLOR }}>■ Halte Bersama ({sharedHalte.length})</div>
                                 <div className="rs-shared-list">
                                     {sharedHalte.map((h, i) => (
-                                        <div key={i} className="rs-shared-item" onClick={() => handleHalteClick(h)}>{h.tapInStopsName}</div>
+                                        <div
+                                            key={i}
+                                            ref={(el) => {
+                                                const key = `${h.corridorName}__${h.tapInStopsName}`
+                                                if (el) halteItemRefs.current.set(key, el)
+                                                else halteItemRefs.current.delete(key)
+                                            }}
+                                            className="rs-shared-item"
+                                            onClick={() => handleHalteClick(h)}
+                                        >
+                                            {h.tapInStopsName}
+                                        </div>
                                     ))}
                                 </div>
                             </div>
@@ -741,7 +796,7 @@ export default function MapPage() {
                         </div>
                     </div>
                 ) : selectedHalte ? (
-                    <div className="right-sidebar-content">
+                    <div className="right-sidebar-content" ref={rightSidebarContentRef}>
                         <div className="rs-section">
                             <div className="rs-title">📍 Detail Halte</div>
                             <div className="rs-halte-detail">
@@ -761,7 +816,16 @@ export default function MapPage() {
                                     .sort((a, b) => (b.total_penumpang_bulan || 0) - (a.total_penumpang_bulan || 0))
                                     .slice(0, 8)
                                     .map((h, i) => (
-                                        <div key={i} className="rs-other-item" onClick={() => handleHalteClick(h)}>
+                                        <div
+                                            key={i}
+                                            ref={(el) => {
+                                                const key = `${h.corridorName}__${h.tapInStopsName}`
+                                                if (el) halteItemRefs.current.set(key, el)
+                                                else halteItemRefs.current.delete(key)
+                                            }}
+                                            className="rs-other-item"
+                                            onClick={() => handleHalteClick(h)}
+                                        >
                                             <span>{h.tapInStopsName}</span>
                                             <span className="rs-other-val">{h.total_penumpang_bulan?.toLocaleString()}</span>
                                         </div>
@@ -771,7 +835,7 @@ export default function MapPage() {
                         </div>
                     </div>
                 ) : (
-                    <div className="right-sidebar-content">
+                    <div className="right-sidebar-content" ref={rightSidebarContentRef}>
                         <div className="rs-section">
                             <div className="rs-empty">
                                 <div className="rs-empty-icon">👆</div>

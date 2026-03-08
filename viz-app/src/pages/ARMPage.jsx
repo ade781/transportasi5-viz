@@ -41,7 +41,10 @@ function Section({ title, subtitle, children }) {
 export default function ARMPage() {
     const [rulesAll, setRulesAll] = useState([])
     const [rulesGlobal, setRulesGlobal] = useState([])
+    const [rulesAllSelf, setRulesAllSelf] = useState([])
+    const [rulesGlobalSelf, setRulesGlobalSelf] = useState([])
     const [armSummary, setArmSummary] = useState([])
+    const [armSummarySelf, setArmSummarySelf] = useState([])
     const [armEval, setArmEval] = useState([])
     const [clusterStats, setClusterStats] = useState([])
     const [armFilterParams, setArmFilterParams] = useState([])
@@ -54,6 +57,7 @@ export default function ARMPage() {
     const [sortField, setSortField] = useState('lift')
     const [sortDir, setSortDir] = useState('desc')
     const [viewMode, setViewMode] = useState('cluster')
+    const [ruleScope, setRuleScope] = useState('cross')
     const [activeTab, setActiveTab] = useState('overview')
     const [selectedRule, setSelectedRule] = useState(null)
     const [minLift, setMinLift] = useState(0)
@@ -63,9 +67,12 @@ export default function ARMPage() {
 
     useEffect(() => {
         Promise.all([
-            loadCSV('/data/rules_all.csv'),
-            loadCSV('/data/rules_global.csv'),
-            loadCSV('/data/arm_summary.csv'),
+            loadCSV('/data/rules_all_cross.csv'),
+            loadCSV('/data/rules_global_cross.csv'),
+            loadCSV('/data/rules_all_self.csv'),
+            loadCSV('/data/rules_global_self.csv'),
+            loadCSV('/data/arm_summary_cross.csv'),
+            loadCSV('/data/arm_summary_self.csv'),
             loadCSV('/data/arm_evaluation.csv'),
             loadCSV('/data/arm_evaluation_cluster.csv'),
             loadCSV('/data/cluster_stats.csv'),
@@ -74,7 +81,7 @@ export default function ARMPage() {
             loadCSV('/data/halte.csv'),
             loadCSV('/data/arm_rules_global_raw_min.csv'),
             loadCSV('/data/arm_rules_cluster_raw_min.csv'),
-        ]).then(([ra, rg, as_, ae, _aec, cs, fp, conn, halte, rawG, rawC]) => {
+        ]).then(([ra, rg, ras, rgs, asCross, asSelf, ae, _aec, cs, fp, conn, halte, rawG, rawC]) => {
             const normalizeRules = (rules) => rules.map(r => ({
                 ...r,
                 lhs: normalizeCorridor(r.lhs),
@@ -91,7 +98,10 @@ export default function ARMPage() {
             })).filter((h) => h.corridor && h.stop)
             setRulesAll(filterRulesByMaxSupportConfidence(normalizeRules(ra), 0.8))
             setRulesGlobal(filterRulesByMaxSupportConfidence(normalizeRules(rg), 0.8))
-            setArmSummary(as_)
+            setRulesAllSelf(filterRulesByMaxSupportConfidence(normalizeRules(ras), 0.8))
+            setRulesGlobalSelf(filterRulesByMaxSupportConfidence(normalizeRules(rgs), 0.8))
+            setArmSummary(asCross)
+            setArmSummarySelf(asSelf)
             setArmEval(ae)
             setClusterStats(cs)
             setArmFilterParams(fp)
@@ -103,7 +113,10 @@ export default function ARMPage() {
         })
     }, [])
 
-    const activeRules = viewMode === 'global' ? rulesGlobal : rulesAll
+    const rulesAllActive = ruleScope === 'cross' ? rulesAll : rulesAllSelf
+    const rulesGlobalActive = ruleScope === 'cross' ? rulesGlobal : rulesGlobalSelf
+    const activeSummary = ruleScope === 'cross' ? armSummary : armSummarySelf
+    const activeRules = viewMode === 'global' ? rulesGlobalActive : rulesAllActive
 
     const filteredRules = useMemo(() => {
         let rules = activeRules
@@ -186,9 +199,6 @@ export default function ARMPage() {
                 map.set(n.corridor, n)
             }
         })
-        if (!map.has(rhs)) {
-            map.set(rhs, { corridor: rhs, n_shared_stops: 0 })
-        }
         if (!map.has(selectedRuleData.lhs)) {
                 map.set(selectedRuleData.lhs, { corridor: selectedRuleData.lhs, n_shared_stops: 0 })
         }
@@ -198,18 +208,18 @@ export default function ARMPage() {
         }))
             .filter((x) => x.corridor === selectedRuleData.lhs || x.corridor === rhs || x.lift_local !== null)
             .sort((a, b) => {
-            if (a.corridor === selectedRuleData.lhs) return -1
-            if (b.corridor === selectedRuleData.lhs) return 1
-            if (a.corridor === rhs) return -1
-            if (b.corridor === rhs) return 1
-            const liftDiff = (Number(b.lift_local) || -Infinity) - (Number(a.lift_local) || -Infinity)
-            if (Number.isFinite(liftDiff) && liftDiff !== 0) return liftDiff
-            const confDiff = (Number(b.confidence) || -Infinity) - (Number(a.confidence) || -Infinity)
-            if (Number.isFinite(confDiff) && confDiff !== 0) return confDiff
-            const supDiff = (Number(b.support) || -Infinity) - (Number(a.support) || -Infinity)
-            if (Number.isFinite(supDiff) && supDiff !== 0) return supDiff
-            return String(a.corridor).localeCompare(String(b.corridor))
-        })
+                if (a.corridor === selectedRuleData.lhs) return -1
+                if (b.corridor === selectedRuleData.lhs) return 1
+                if (a.corridor === rhs) return -1
+                if (b.corridor === rhs) return 1
+                const liftDiff = (Number(b.lift_local) || -Infinity) - (Number(a.lift_local) || -Infinity)
+                if (Number.isFinite(liftDiff) && liftDiff !== 0) return liftDiff
+                const confDiff = (Number(b.confidence) || -Infinity) - (Number(a.confidence) || -Infinity)
+                if (Number.isFinite(confDiff) && confDiff !== 0) return confDiff
+                const supDiff = (Number(b.support) || -Infinity) - (Number(a.support) || -Infinity)
+                if (Number.isFinite(supDiff) && supDiff !== 0) return supDiff
+                return String(a.corridor).localeCompare(String(b.corridor))
+            })
         return unique.slice(0, 5)
     }, [selectedRuleData, corridorConnectivity, halteRows, rawGlobalMin, rawClusterMin, viewMode])
 
@@ -289,6 +299,44 @@ export default function ARMPage() {
         return unique.slice(0, 5)
     }, [selectedRuleData, corridorConnectivity, halteRows, rawGlobalMin, rawClusterMin, viewMode])
 
+    const selfCorridorMetrics = useMemo(() => {
+        if (!selectedRuleData) return []
+        const lhsBase = normalizeCorridor(selectedRuleData.lhs)
+        const rhsBase = normalizeCorridor(selectedRuleData.rhs)
+        const metricScope = viewMode === 'cluster'
+            ? rawClusterMin.filter((r) => Number(r.cluster) === Number(selectedRuleData.cluster))
+            : rawGlobalMin
+
+        const pickSelf = (corridor) => {
+            const rows = metricScope.filter((r) => normalizeCorridor(r.lhs) === corridor && normalizeCorridor(r.rhs) === corridor)
+            if (!rows.length) return null
+            const best = rows.sort((a, b) => (Number(b.lift) || 0) - (Number(a.lift) || 0))[0]
+            return {
+                corridor,
+                support: Number(best.support),
+                confidence: Number(best.confidence),
+                lift_local: Number(best.lift),
+            }
+        }
+
+        const out = []
+        const lhsSelf = pickSelf(lhsBase)
+        out.push({
+            label: `${lhsBase} → ${lhsBase}`,
+            type: 'LHS→LHS',
+            ...(lhsSelf || { support: null, confidence: null, lift_local: null }),
+        })
+        if (rhsBase !== lhsBase) {
+            const rhsSelf = pickSelf(rhsBase)
+            out.push({
+                label: `${rhsBase} → ${rhsBase}`,
+                type: 'RHS→RHS',
+                ...(rhsSelf || { support: null, confidence: null, lift_local: null }),
+            })
+        }
+        return out
+    }, [selectedRuleData, rawGlobalMin, rawClusterMin, viewMode])
+
     useEffect(() => {
         if (activeTab !== 'rules') return
         if (selectedRule === null) return
@@ -300,9 +348,13 @@ export default function ARMPage() {
         })
     }, [selectedRule, filteredRules, activeTab])
 
+    useEffect(() => {
+        setSelectedRule(null)
+    }, [viewMode, ruleScope, selectedCluster, searchText, minLift, minConf])
+
     /* ── derived stats ── */
-    const totalRulesCluster = rulesAll.length
-    const totalRulesGlobal = rulesGlobal.length
+    const totalRulesCluster = rulesAllActive.length
+    const totalRulesGlobal = rulesGlobalActive.length
     const avgLift = useMemo(() => {
         const rules = activeRules
         if (!rules.length) return 0
@@ -345,13 +397,13 @@ export default function ARMPage() {
     })), [filteredRules])
 
     // Bar chart: rules per cluster
-    const rulesPerCluster = useMemo(() => armSummary.map(s => ({
+    const rulesPerCluster = useMemo(() => activeSummary.map(s => ({
         cluster: s.cluster,
         label: s.cluster_label,
         n_rules: s.n_rules,
         avg_lift: s.avg_lift,
         max_lift: s.max_lift,
-    })), [armSummary])
+    })), [activeSummary])
 
     // Lift distribution (histogram-like)
     const liftDistribution = useMemo(() => {
@@ -441,9 +493,12 @@ export default function ARMPage() {
             {activeTab === 'overview' && (
                 <>
                     {/* Summary per cluster */}
-                    <Section title="Ringkasan per Cluster" subtitle="Statistik association rules berdasarkan cluster GMM">
+                    <Section
+                        title="Ringkasan per Cluster"
+                        subtitle={`Statistik association rules berdasarkan cluster GMM (${ruleScope === 'cross' ? 'cross-corridor' : 'within-corridor'})`}
+                    >
                         <div className="arm-summary-grid">
-                            {armSummary.map(s => {
+                            {activeSummary.map(s => {
                                 const cs = clusterStats.find(c => Number(c.cluster) === Number(s.cluster)) || {}
                                 return (
                                     <div key={s.cluster} className="arm-summary-card" style={{ '--cluster-color': CLUSTER_COLORS[s.cluster] }}>
@@ -666,13 +721,25 @@ export default function ARMPage() {
                     <div className="arm-filters-v2">
                         <div className="filter-row">
                             <div className="filter-group">
+                                <label>Scope</label>
+                                <div className="btn-group">
+                                    <button className={`btn ${ruleScope === 'cross' ? 'active' : ''}`} onClick={() => setRuleScope('cross')}>
+                                        Cross-corridor
+                                    </button>
+                                    <button className={`btn ${ruleScope === 'self' ? 'active' : ''}`} onClick={() => setRuleScope('self')}>
+                                        Within-corridor
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="filter-group">
                                 <label>Mode</label>
                                 <div className="btn-group">
                                     <button className={`btn ${viewMode === 'cluster' ? 'active' : ''}`} onClick={() => setViewMode('cluster')}>
-                                        Per Cluster ({rulesAll.length})
+                                        Per Cluster ({rulesAllActive.length})
                                     </button>
                                     <button className={`btn ${viewMode === 'global' ? 'active' : ''}`} onClick={() => setViewMode('global')}>
-                                        Global ({rulesGlobal.length})
+                                        Global ({rulesGlobalActive.length})
                                     </button>
                                 </div>
                             </div>
@@ -956,7 +1023,12 @@ export default function ARMPage() {
                                 <div className="method-icon">1️⃣</div>
                                 <div>
                                     <strong>Basket Construction</strong>
-                                    <p>Setiap transaksi cross-corridor diperlakukan sebagai transfer terarah: {`{corridorName -> tapOut_corridorName}`}. Support dihitung pada basis transaksi.</p>
+                                    <p>
+                                        {ruleScope === 'cross'
+                                            ? `Setiap transaksi cross-corridor diperlakukan sebagai transfer terarah: {corridorName -> tapOut_corridorName}.`
+                                            : `Setiap transaksi within-corridor (tap-in dan tap-out koridor sama) diperlakukan sebagai self-transfer: {corridorName -> corridorName}.`
+                                        } Support dihitung pada basis transaksi.
+                                    </p>
                                 </div>
                             </div>
                             <div className="method-item">

@@ -13,6 +13,10 @@ desktop.ini
 # Logs / Env
 # ------------------------------
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 .env
 .env.*
 
@@ -42,6 +46,11 @@ node_modules/
 dist/
 build/
 .vite/
+.cache/
+.parcel-cache/
+.eslintcache
+*.tsbuildinfo
+vite.svg
 
 # ------------------------------
 # Project outputs

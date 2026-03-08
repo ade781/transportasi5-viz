@@ -23,6 +23,13 @@ compute_rule_metrics <- function(df, connectivity) {
     if (nrow(df) == 0) return(tibble())
 
     n_total <- nrow(df)
+    local_alpha <- 1
+    corridors <- sort(unique(c(df$lhs, df$rhs)))
+    connectivity_with_self <- bind_rows(
+        connectivity %>% select(lhs, rhs),
+        tibble(lhs = corridors, rhs = corridors)
+    ) %>%
+        distinct(lhs, rhs)
 
     pair_counts <- df %>%
         count(lhs, rhs, n_shared_stops, name = "count_trip")
@@ -34,7 +41,7 @@ compute_rule_metrics <- function(df, connectivity) {
         distinct(lhs, rhs) %>%
         count(lhs, name = "lhs_degree")
 
-    rhs_neighbor_totals <- connectivity %>%
+    rhs_neighbor_totals <- connectivity_with_self %>%
         distinct(lhs, rhs_neighbor = rhs) %>%
         left_join(
             rhs_counts %>% rename(rhs_neighbor = rhs, rhs_neighbor_trip_total = rhs_trip_count),
@@ -54,14 +61,22 @@ compute_rule_metrics <- function(df, connectivity) {
             support = count_trip / n_total,
             support_global = support,
             confidence = if_else(lhs_trip_count > 0, count_trip / lhs_trip_count, NA_real_),
-            support_local = confidence,
+            # Local support: proporsi rule terhadap total trip pada neighborhood
+            # koridor yang terhubung dengan LHS (bukan terhadap seluruh data).
+            support_local = if_else(rhs_neighbor_total > 0, count_trip / rhs_neighbor_total, NA_real_),
             support_degree_adj = support_local * lhs_degree,
             coverage = lhs_trip_count / n_total,
             rhs_prob_global = rhs_trip_count / n_total,
-            rhs_prob_local = if_else(rhs_neighbor_total > 0, rhs_trip_count / rhs_neighbor_total, NA_real_),
+            rhs_prob_local = if_else(
+                rhs_neighbor_total > 0,
+                (rhs_trip_count + local_alpha) / (rhs_neighbor_total + pmax(lhs_degree, 1) * local_alpha),
+                NA_real_
+            ),
             expected_local_count = lhs_trip_count * rhs_prob_local,
             lift_global = if_else(rhs_prob_global > 0, confidence / rhs_prob_global, NA_real_),
-            lift_local = if_else(rhs_prob_local > 0, support_local / rhs_prob_local, NA_real_),
+            # Keep local lift consistent with conditional rule strength:
+            # confidence compared to local baseline probability of RHS.
+            lift_local = if_else(rhs_prob_local > 0, confidence / rhs_prob_local, NA_real_),
             p_value_local = if_else(
                 !is.na(rhs_prob_local),
                 pbinom(

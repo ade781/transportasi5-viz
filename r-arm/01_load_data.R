@@ -113,27 +113,28 @@ connectivity <- halte %>%
     summarise(n_shared_stops = n_distinct(stop_name), .groups = "drop")
 
 transfer_base <- trip %>%
-    filter(is_cross) %>%
     left_join(connectivity, by = c("lhs", "rhs")) %>%
     mutate(
+        is_same_corridor = lhs == rhs,
         n_shared_stops = if_else(is.na(n_shared_stops), 0L, as.integer(n_shared_stops)),
-        is_connected = n_shared_stops > 0
+        is_connected = is_same_corridor | (n_shared_stops > 0)
     ) %>%
     select(
         obs_id, transID, payCardID, date, day_of_week,
-        lhs, rhs, cluster, cluster_label, is_weekend,
+        lhs, rhs, cluster, cluster_label, is_weekend, is_same_corridor,
         n_shared_stops, is_connected
     )
 
 overview <- tibble(
     metric = c(
         "total_trip", "total_transfer_trip", "total_connected_transfer",
-        "unique_users", "unique_corridors", "connected_pairs"
+        "total_same_corridor_trip", "unique_users", "unique_corridors", "connected_pairs"
     ),
     value = c(
         nrow(trip),
         nrow(transfer_base),
         sum(transfer_base$is_connected, na.rm = TRUE),
+        sum(transfer_base$is_same_corridor, na.rm = TRUE),
         n_distinct(trip$payCardID),
         n_distinct(c(trip$lhs, trip$rhs), na.rm = TRUE),
         nrow(connectivity)

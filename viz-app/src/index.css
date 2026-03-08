@@ -605,6 +605,7 @@ body {
     font-style: italic;
 }
 
+
 /* ── Map Toolbar ── */
 .map-toolbar {
     position: absolute;
@@ -626,6 +627,7 @@ body {
     border-radius: 10px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
+
 
 .map-toolbar-label {
     font-size: 0.7rem;
