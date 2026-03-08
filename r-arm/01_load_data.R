@@ -42,10 +42,26 @@ cat("=", strrep("=", 66), "\n\n")
 cat("Memuat data transaksi...\n")
 trip <- read_csv(path_trip, show_col_types = FALSE) %>%
     mutate(
+        tapOut_corridorName = dplyr::coalesce(
+            if ("tapOut_corridorName" %in% names(.)) as.character(tapOut_corridorName) else NA_character_,
+            if ("tC" %in% names(.)) as.character(tC) else NA_character_
+        )
+    ) %>%
+    mutate(
         obs_id = row_number(),
         lhs = normalize_corridor(corridorName),
         rhs = normalize_corridor(tapOut_corridorName)
     )
+
+# Mapping koridor nama -> ID dari data transaksi (untuk referensi tap-out corridor ID)
+corridor_ref <- trip %>%
+    transmute(
+        corridorName_ref = normalize_corridor(corridorName),
+        corridorID_ref = as.character(corridorID)
+    ) %>%
+    filter(!is.na(corridorName_ref), corridorName_ref != "", !is.na(corridorID_ref), corridorID_ref != "") %>%
+    group_by(corridorName_ref) %>%
+    summarise(tapOut_corridorID = dplyr::first(corridorID_ref), .groups = "drop")
 
 cat("Baris transaksi:", nrow(trip), "\n")
 
@@ -66,6 +82,7 @@ profile <- read_csv(path_profile, show_col_types = FALSE) %>%
 trip <- trip %>%
     left_join(assign, by = "obs_id") %>%
     left_join(profile, by = "cluster") %>%
+    left_join(corridor_ref, by = c("rhs" = "corridorName_ref")) %>%
     rename(cluster_label = label)
 
 trip <- trip %>%
@@ -126,7 +143,11 @@ overview <- tibble(
 write_csv(overview, file.path(hasil_dir, "01_data_overview.csv"))
 write_csv(
     trip %>%
-        select(obs_id, transID, payCardID, lhs, rhs, cluster, cluster_label, is_cross),
+        select(
+            obs_id, transID, payCardID,
+            corridorID, corridorName, tapOut_corridorName, tapOut_corridorID,
+            lhs, rhs, cluster, cluster_label, is_cross
+        ),
     file.path(hasil_dir, "01_trip_cluster_base.csv")
 )
 write_csv(transfer_base, file.path(hasil_dir, "01_transfer_base.csv"))

@@ -610,7 +610,6 @@ export default function MapPage() {
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
                                     <span style={{ color: '#888' }}>Koridor ID</span><strong>{popupInfo.halte.corridorID}</strong>
                                     <span style={{ color: '#888' }}>Penumpang/bln</span><strong>{popupInfo.halte.total_penumpang_bulan?.toLocaleString()}</strong>
-                                    <span style={{ color: '#888' }}>Rata-rata/hari</span><strong>{popupInfo.halte.rata_rata_per_hari}</strong>
                                     <span style={{ color: '#888' }}>Koordinat</span><strong style={{ fontSize: '0.75rem' }}>{popupInfo.halte.latitude?.toFixed(4)}, {popupInfo.halte.longitude?.toFixed(4)}</strong>
                                 </div>
                             </div>
@@ -673,7 +672,6 @@ export default function MapPage() {
                                 <div className="rs-metric"><span className="rs-metric-val">{selectedRule.lift?.toFixed(2)}</span><span className="rs-metric-label">Lift</span></div>
                                 <div className="rs-metric"><span className="rs-metric-val">{(selectedRule.confidence * 100).toFixed(1)}%</span><span className="rs-metric-label">Confidence</span></div>
                                 <div className="rs-metric"><span className="rs-metric-val">{(selectedRule.support * 100).toFixed(3)}%</span><span className="rs-metric-label">Support</span></div>
-                                <div className="rs-metric"><span className="rs-metric-val">{(selectedRule.count_trips ?? selectedRule.count_trips_global ?? '-').toLocaleString()}</span><span className="rs-metric-label">Total Trips</span></div>
                             </div>
                         </div>
 
@@ -683,7 +681,6 @@ export default function MapPage() {
                                 <div className="rs-corridor-stats">
                                     <div className="rs-cs-row"><span>Jumlah Halte</span><strong>{corridorStatsLHS.totalHalte}</strong></div>
                                     <div className="rs-cs-row"><span>Total Penumpang/Bulan</span><strong>{corridorStatsLHS.totalPenumpang.toLocaleString()}</strong></div>
-                                    <div className="rs-cs-row"><span>Rata-rata/Halte</span><strong>{corridorStatsLHS.avgPenumpang.toFixed(0)}</strong></div>
                                 </div>
                             )}
                             <div className="rs-subtitle">🏆 Top 3 Halte</div>
@@ -706,7 +703,6 @@ export default function MapPage() {
                                 <div className="rs-corridor-stats">
                                     <div className="rs-cs-row"><span>Jumlah Halte</span><strong>{corridorStatsRHS.totalHalte}</strong></div>
                                     <div className="rs-cs-row"><span>Total Penumpang/Bulan</span><strong>{corridorStatsRHS.totalPenumpang.toLocaleString()}</strong></div>
-                                    <div className="rs-cs-row"><span>Rata-rata/Halte</span><strong>{corridorStatsRHS.avgPenumpang.toFixed(0)}</strong></div>
                                 </div>
                             )}
                             <div className="rs-subtitle">🏆 Top 3 Halte</div>
@@ -740,7 +736,6 @@ export default function MapPage() {
                                 <div className="rs-comp-row"><span></span><span style={{ color: CORRIDOR_A_COLOR, fontWeight: 600 }}>Kor. A</span><span style={{ color: CORRIDOR_B_COLOR, fontWeight: 600 }}>Kor. B</span></div>
                                 <div className="rs-comp-row"><span>Halte</span><span>{ruleHalteLHS.length}</span><span>{ruleHalteRHS.length}</span></div>
                                 <div className="rs-comp-row"><span>Total Penumpang</span><span>{corridorStatsLHS?.totalPenumpang.toLocaleString()}</span><span>{corridorStatsRHS?.totalPenumpang.toLocaleString()}</span></div>
-                                <div className="rs-comp-row"><span>Avg/Halte</span><span>{corridorStatsLHS?.avgPenumpang.toFixed(0)}</span><span>{corridorStatsRHS?.avgPenumpang.toFixed(0)}</span></div>
                                 <div className="rs-comp-row"><span>Top Halte</span><span>{topHalteLHS[0]?.tapInStopsName || '-'}</span><span>{topHalteRHS[0]?.tapInStopsName || '-'}</span></div>
                             </div>
                         </div>

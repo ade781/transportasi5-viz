@@ -1368,6 +1368,11 @@ body {
     padding: 20px;
 }
 
+.rule-detail-panel .rdp-rule-visual,
+.rule-detail-panel .rdp-metrics {
+    display: none;
+}
+
 .rdp-rule-visual {
     display: flex;
     align-items: center;

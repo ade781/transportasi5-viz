@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
     ResponsiveContainer, Cell, ScatterChart, Scatter, ZAxis,
@@ -45,6 +45,10 @@ export default function ARMPage() {
     const [armEval, setArmEval] = useState([])
     const [clusterStats, setClusterStats] = useState([])
     const [armFilterParams, setArmFilterParams] = useState([])
+    const [corridorConnectivity, setCorridorConnectivity] = useState([])
+    const [halteRows, setHalteRows] = useState([])
+    const [rawGlobalMin, setRawGlobalMin] = useState([])
+    const [rawClusterMin, setRawClusterMin] = useState([])
     const [selectedCluster, setSelectedCluster] = useState('all')
     const [searchText, setSearchText] = useState('')
     const [sortField, setSortField] = useState('lift')
@@ -55,6 +59,7 @@ export default function ARMPage() {
     const [minLift, setMinLift] = useState(0)
     const [minConf, setMinConf] = useState(0)
     const [loading, setLoading] = useState(true)
+    const detailPanelRef = useRef(null)
 
     useEffect(() => {
         Promise.all([
@@ -65,18 +70,35 @@ export default function ARMPage() {
             loadCSV('/data/arm_evaluation_cluster.csv'),
             loadCSV('/data/cluster_stats.csv'),
             loadCSV('/data/arm_filter_params.csv'),
-        ]).then(([ra, rg, as_, ae, _aec, cs, fp]) => {
+            loadCSV('/data/arm_corridor_connectivity.csv'),
+            loadCSV('/data/halte.csv'),
+            loadCSV('/data/arm_rules_global_raw_min.csv'),
+            loadCSV('/data/arm_rules_cluster_raw_min.csv'),
+        ]).then(([ra, rg, as_, ae, _aec, cs, fp, conn, halte, rawG, rawC]) => {
             const normalizeRules = (rules) => rules.map(r => ({
                 ...r,
                 lhs: normalizeCorridor(r.lhs),
                 rhs: normalizeCorridor(r.rhs),
             }))
+            const normalizedConn = (conn || []).map((c) => ({
+                lhs: normalizeCorridor(c.lhs || c['\ufefflhs']),
+                rhs: normalizeCorridor(c.rhs || c['\ufeffrhs']),
+                n_shared_stops: Number(c.n_shared_stops) || 0,
+            }))
+            const normalizedHalte = (halte || []).map((h) => ({
+                corridor: normalizeCorridor(h.corridorName),
+                stop: String(h.tapInStopsName || '').trim(),
+            })).filter((h) => h.corridor && h.stop)
             setRulesAll(filterRulesByMaxSupportConfidence(normalizeRules(ra), 0.8))
             setRulesGlobal(filterRulesByMaxSupportConfidence(normalizeRules(rg), 0.8))
             setArmSummary(as_)
             setArmEval(ae)
             setClusterStats(cs)
             setArmFilterParams(fp)
+            setCorridorConnectivity(normalizedConn)
+            setHalteRows(normalizedHalte)
+            setRawGlobalMin(normalizeRules(rawG || []))
+            setRawClusterMin(normalizeRules(rawC || []))
             setLoading(false)
         })
     }, [])
@@ -104,6 +126,98 @@ export default function ARMPage() {
         })
         return rules
     }, [activeRules, selectedCluster, searchText, sortField, sortDir, viewMode, minLift, minConf])
+
+    const selectedRuleData = useMemo(
+        () => (selectedRule !== null ? filteredRules[selectedRule] : null),
+        [selectedRule, filteredRules]
+    )
+
+    const connectedToSameTapOut = useMemo(() => {
+        if (!selectedRuleData?.rhs) return []
+        const rhs = normalizeCorridor(selectedRuleData.rhs)
+        const metricScope = viewMode === 'cluster'
+            ? rawClusterMin.filter((r) => Number(r.cluster) === Number(selectedRuleData.cluster))
+            : rawGlobalMin
+        const metricsByLhs = new Map()
+        metricScope
+            .filter(r => normalizeCorridor(r.rhs) === rhs)
+            .forEach((r) => {
+                const lhs = normalizeCorridor(r.lhs)
+                const row = {
+                    support: Number(r.support) || 0,
+                    confidence: Number(r.confidence) || 0,
+                    lift_local: Number(r.lift) || 0,
+                }
+                const prev = metricsByLhs.get(lhs)
+                if (!prev || row.lift_local > prev.lift_local) metricsByLhs.set(lhs, row)
+            })
+
+        const neighborsFromConnectivity = corridorConnectivity
+            .filter((c) => c.lhs === rhs || c.rhs === rhs)
+            .map((c) => ({
+                corridor: c.lhs === rhs ? c.rhs : c.lhs,
+            }))
+            .filter((x) => x.corridor && x.corridor !== rhs)
+
+        // Fallback/validation berbasis data_halte: koridor terhubung jika berbagi halte
+        const rhsStops = new Set(
+            halteRows
+                .filter((h) => h.corridor === rhs)
+                .map((h) => h.stop)
+        )
+        const sharedCounts = new Map()
+        if (rhsStops.size > 0) {
+            halteRows.forEach((h) => {
+                if (h.corridor !== rhs && rhsStops.has(h.stop)) {
+                    const prev = sharedCounts.get(h.corridor) || 0
+                    sharedCounts.set(h.corridor, prev + 1)
+                }
+            })
+        }
+        const neighborsFromHalte = Array.from(sharedCounts.entries()).map(([corridor, n]) => ({
+            corridor,
+            n_shared_stops: n
+        }))
+
+        const map = new Map()
+        neighborsFromConnectivity.concat(neighborsFromHalte).forEach((n) => {
+            const prev = map.get(n.corridor)
+            if (!prev || n.n_shared_stops > prev.n_shared_stops) {
+                map.set(n.corridor, n)
+            }
+        })
+        if (!map.has(selectedRuleData.lhs)) {
+                map.set(selectedRuleData.lhs, { corridor: selectedRuleData.lhs, n_shared_stops: 0 })
+        }
+        const unique = Array.from(map.values()).map((x) => ({
+            ...x,
+            ...(metricsByLhs.get(x.corridor) || { support: null, confidence: null, lift_local: null }),
+        }))
+            .filter((x) => x.corridor === selectedRuleData.lhs || x.lift_local !== null)
+            .sort((a, b) => {
+            if (a.corridor === selectedRuleData.lhs) return -1
+            if (b.corridor === selectedRuleData.lhs) return 1
+            const liftDiff = (Number(b.lift_local) || -Infinity) - (Number(a.lift_local) || -Infinity)
+            if (Number.isFinite(liftDiff) && liftDiff !== 0) return liftDiff
+            const confDiff = (Number(b.confidence) || -Infinity) - (Number(a.confidence) || -Infinity)
+            if (Number.isFinite(confDiff) && confDiff !== 0) return confDiff
+            const supDiff = (Number(b.support) || -Infinity) - (Number(a.support) || -Infinity)
+            if (Number.isFinite(supDiff) && supDiff !== 0) return supDiff
+            return String(a.corridor).localeCompare(String(b.corridor))
+        })
+        return unique.slice(0, 5)
+    }, [selectedRuleData, corridorConnectivity, halteRows, rawGlobalMin, rawClusterMin, viewMode])
+
+    useEffect(() => {
+        if (activeTab !== 'rules') return
+        if (selectedRule === null) return
+        if (!filteredRules[selectedRule]) return
+        const el = detailPanelRef.current
+        if (!el) return
+        requestAnimationFrame(() => {
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        })
+    }, [selectedRule, filteredRules, activeTab])
 
     /* ── derived stats ── */
     const totalRulesCluster = rulesAll.length
@@ -537,7 +651,6 @@ export default function ARMPage() {
                                     <th className="sortable" onClick={() => handleSort(viewMode === 'global' ? 'count_trips_global' : 'count_trips')}>
                                         Trips{sortIcon(viewMode === 'global' ? 'count_trips_global' : 'count_trips')}
                                     </th>
-                                    <th className="sortable" onClick={() => handleSort('n_shared_stops')}>Shared Stops{sortIcon('n_shared_stops')}</th>
                                     {viewMode === 'cluster' && <th>Cluster</th>}
                                     <th>Detail</th>
                                 </tr>
@@ -568,7 +681,6 @@ export default function ARMPage() {
                                         </td>
                                         <td className="td-num">{r.lift_global?.toFixed(2)}</td>
                                         <td className="td-num">{(r.count_trips ?? r.count_trips_global ?? '-').toLocaleString()}</td>
-                                        <td className="td-num">{(r.n_shared_stops ?? 0).toLocaleString()}</td>
                                         {viewMode === 'cluster' && (
                                             <td>
                                                 <span className="cluster-badge" style={{ background: CLUSTER_COLORS[r.cluster] }}>
@@ -589,7 +701,7 @@ export default function ARMPage() {
 
                     {/* Expanded rule detail */}
                     {selectedRule !== null && filteredRules[selectedRule] && (
-                        <div className="rule-detail-panel">
+                        <div className="rule-detail-panel" ref={detailPanelRef}>
                             <div className="rdp-header">
                                 <h4>Detail Rule #{selectedRule + 1}</h4>
                                 <button className="btn-close" onClick={() => setSelectedRule(null)}>✕</button>
@@ -626,6 +738,39 @@ export default function ARMPage() {
                                         <span className="rdp-metric-val">{(filteredRules[selectedRule].count_trips ?? filteredRules[selectedRule].count_trips_global ?? '-').toLocaleString()}</span>
                                         <span className="rdp-metric-desc">Jumlah transaksi transfer LHS {'=>'} RHS</span>
                                     </div>
+                                </div>
+                                <div style={{ marginTop: 16 }}>
+                                    <div className="rdp-metric-label" style={{ marginBottom: 8 }}>
+                                        Koridor yang terhubung ke tap-out corridor: <strong>{filteredRules[selectedRule].rhs}</strong>
+                                    </div>
+                                    {connectedToSameTapOut.length === 0 ? (
+                                        <div className="rdp-metric-desc">Tidak ada koridor pada scope saat ini.</div>
+                                    ) : (
+                                        <div className="table-wrapper">
+                                            <table className="data-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Koridor</th>
+                                                        <th>Status</th>
+                                                        <th>Support</th>
+                                                        <th>Confidence</th>
+                                                        <th>Lift Lokal</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {connectedToSameTapOut.map((x, idx) => (
+                                                        <tr key={`${x.corridor}-${idx}`}>
+                                                            <td className="td-corridor">{x.corridor}</td>
+                                                            <td>{x.corridor === filteredRules[selectedRule].lhs ? 'Rule terpilih' : 'Koridor lain terhubung'}</td>
+                                                            <td className="td-num">{Number.isFinite(x.support) ? `${(x.support * 100).toFixed(3)}%` : '-'}</td>
+                                                            <td className="td-num">{Number.isFinite(x.confidence) ? `${(x.confidence * 100).toFixed(2)}%` : '-'}</td>
+                                                            <td className="td-num">{Number.isFinite(x.lift_local) ? x.lift_local.toFixed(2) : '-'}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>

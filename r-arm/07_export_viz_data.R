@@ -27,15 +27,18 @@ hasil_dir <- file.path(base_dir, "hasil")
 
 path_rules_global <- file.path(hasil_dir, "04_rules_global_filtered.csv")
 path_rules_cluster <- file.path(hasil_dir, "04_rules_cluster_filtered.csv")
+path_rules_global_raw <- file.path(hasil_dir, "03_rules_global_raw.csv")
+path_rules_cluster_raw <- file.path(hasil_dir, "03_rules_cluster_raw.csv")
 path_filter_params <- file.path(hasil_dir, "04_filter_params.csv")
 path_summary <- file.path(hasil_dir, "05_arm_summary.csv")
 path_cluster_stats <- file.path(hasil_dir, "05_cluster_stats.csv")
 path_eval <- file.path(hasil_dir, "06_arm_evaluation.csv")
 path_eval_cluster <- file.path(hasil_dir, "06_arm_evaluation_cluster.csv")
+path_connectivity <- file.path(hasil_dir, "01_corridor_connectivity.csv")
 
 required <- c(
-    path_rules_global, path_rules_cluster, path_filter_params,
-    path_summary, path_cluster_stats, path_eval, path_eval_cluster
+    path_rules_global, path_rules_cluster, path_rules_global_raw, path_rules_cluster_raw, path_filter_params,
+    path_summary, path_cluster_stats, path_eval, path_eval_cluster, path_connectivity
 )
 if (any(!file.exists(required))) stop("Jalankan STEP 4-6 terlebih dahulu.")
 
@@ -52,6 +55,8 @@ cat("=", strrep("=", 66), "\n\n")
 
 rules_global <- read_csv(path_rules_global, show_col_types = FALSE)
 rules_cluster <- read_csv(path_rules_cluster, show_col_types = FALSE)
+rules_global_raw <- read_csv(path_rules_global_raw, show_col_types = FALSE)
+rules_cluster_raw <- read_csv(path_rules_cluster_raw, show_col_types = FALSE)
 filter_params <- read_csv(path_filter_params, show_col_types = FALSE)
 summary_df <- read_csv(path_summary, show_col_types = FALSE)
 cluster_stats <- read_csv(path_cluster_stats, show_col_types = FALSE)
@@ -98,6 +103,15 @@ write_csv(eval_df, file.path(hasil_dir, "arm_evaluation.csv"))
 write_csv(eval_cluster_df, file.path(hasil_dir, "arm_evaluation_cluster.csv"))
 write_csv(cluster_stats_out, file.path(hasil_dir, "cluster_stats.csv"))
 write_csv(filter_params, file.path(hasil_dir, "arm_filter_params.csv"))
+write_csv(read_csv(path_connectivity, show_col_types = FALSE), file.path(hasil_dir, "arm_corridor_connectivity.csv"))
+write_csv(
+    rules_global_raw %>% select(lhs, rhs, support, confidence, lift = lift_local, count_trip),
+    file.path(hasil_dir, "arm_rules_global_raw_min.csv")
+)
+write_csv(
+    rules_cluster_raw %>% select(cluster, lhs, rhs, support, confidence, lift = lift_local, count_trip),
+    file.path(hasil_dir, "arm_rules_cluster_raw_min.csv")
+)
 
 # Sync to viz-app
 viz_data_dir <- file.path(project_root, "viz-app", "public", "data")
@@ -110,7 +124,10 @@ files_to_copy <- c(
     "arm_evaluation.csv",
     "arm_evaluation_cluster.csv",
     "cluster_stats.csv",
-    "arm_filter_params.csv"
+    "arm_filter_params.csv",
+    "arm_corridor_connectivity.csv",
+    "arm_rules_global_raw_min.csv",
+    "arm_rules_cluster_raw_min.csv"
 )
 
 for (f in files_to_copy) {

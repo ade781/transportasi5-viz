@@ -11,6 +11,7 @@
 library(readr)
 library(dplyr)
 library(tidyr)
+library(stringr)
 
 # Set paths untuk output
 base_dir <- "C:/Users/ad/OneDrive/Dokumen/ad/COBA/transportasi5 viz/r-gmm"
@@ -25,15 +26,35 @@ cat("=", strrep("=", 59), "\n\n")
 # -- Load data --
 df <- read_csv(file.path(parent_dir, "data_clean.csv"), show_col_types = FALSE)
 assignments <- read_csv(file.path(hasil_dir, "05_cluster_assignments.csv"), show_col_types = FALSE)
+probs <- read_csv(file.path(hasil_dir, "05_cluster_probabilities.csv"), show_col_types = FALSE)
+
+# Hindari kolom z-score duplikat (.x/.y) jika data_clean sudah pernah memuat z-score
+z_cols_existing <- names(df)[grepl("^z_", names(df))]
+if (length(z_cols_existing) > 0) {
+    df <- df %>% select(-all_of(z_cols_existing))
+}
 
 cat("Data asli:", nrow(df), "baris\n")
-cat("Assignments:", nrow(assignments), "baris\n\n")
+cat("Assignments:", nrow(assignments), "baris\n")
+cat("Probabilities:", nrow(probs), "baris\n\n")
 
-# Gabungkan cluster ke data asli dan z-scores
-df$cluster <- assignments$cluster
+# Pastikan obs_id tersedia untuk join konsisten lintas file
+if (!"obs_id" %in% names(df)) {
+    df <- df %>% mutate(obs_id = row_number())
+}
+if (!"obs_id" %in% names(assignments)) {
+    assignments <- assignments %>% mutate(obs_id = row_number())
+}
+if (!"obs_id" %in% names(probs)) {
+    probs <- probs %>% mutate(obs_id = row_number())
+}
+
+# Gabungkan cluster dan z-scores ke data asli
 df <- df %>%
-    bind_cols(
-        assignments %>% select(z_tapIn_hour, z_duration_minutes, z_n_trips, z_n_days_month)
+    left_join(
+        assignments %>%
+            select(obs_id, cluster, z_tapIn_hour, z_duration_minutes, z_n_trips, z_n_days_month),
+        by = "obs_id"
     )
 
 # ==============================================================================
@@ -109,22 +130,44 @@ cat(strrep("-", 80), "\n")
 # 6c. Gabungkan label ke data lengkap
 # ==============================================================================
 label_map <- profiles %>% select(cluster, label)
-df_labeled <- df %>%
-    left_join(label_map, by = "cluster")
 
-# Tambahkan z-scores
-df_labeled <- df_labeled %>%
+prob_cols <- names(probs)[grepl("^prob_cl\\d+$", names(probs))]
+required_prob_cols <- paste0("prob_cl", 1:5)
+
+df_labeled <- df %>%
+    left_join(label_map, by = "cluster") %>%
     left_join(
-        assignments %>% select(obs_id, z_tapIn_hour, z_duration_minutes, z_n_trips, z_n_days_month),
-        by = c("trip_num" = "obs_id")
+        probs %>% select(obs_id, all_of(prob_cols)),
+        by = "obs_id"
     )
+
+for (nm in required_prob_cols) {
+    if (!nm %in% names(df_labeled)) {
+        df_labeled[[nm]] <- 0
+    }
+}
 
 # -- Simpan hasil --
 write_csv(profiles, file.path(hasil_dir, "06_cluster_profiles.csv"))
-write_csv(df_labeled, file.path(hasil_dir, "06_cluster_labeled.csv"))
+target_labeled <- file.path(hasil_dir, "06_cluster_labeled.csv")
+fallback_labeled <- file.path(hasil_dir, "06_cluster_labeled_new.csv")
+write_ok <- TRUE
+tryCatch(
+    {
+        write_csv(df_labeled, target_labeled)
+    },
+    error = function(e) {
+        write_ok <<- FALSE
+        write_csv(df_labeled, fallback_labeled)
+        cat("\n[WARN] Gagal overwrite 06_cluster_labeled.csv (file sedang terkunci).\n")
+        cat("[OK] File alternatif disimpan di", fallback_labeled, "\n")
+    }
+)
 
 cat("\n[OK] File disimpan di", file.path(hasil_dir, "06_cluster_profiles.csv"), "\n")
-cat("[OK] File disimpan di", file.path(hasil_dir, "06_cluster_labeled.csv"), "\n")
+if (write_ok) {
+    cat("[OK] File disimpan di", target_labeled, "\n")
+}
 cat(sprintf(
     "\nRingkasan: %d cluster teridentifikasi dari %s observasi\n",
     nrow(profiles), format(nrow(df_labeled), big.mark = ".")

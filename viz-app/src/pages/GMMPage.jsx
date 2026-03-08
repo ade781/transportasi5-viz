@@ -102,6 +102,7 @@ export default function GMMPage() {
     const [evaluation, setEvaluation] = useState([])
     const [gmmParams, setGmmParams] = useState([])
     const [modelSelection, setModelSelection] = useState([])
+    const [uncertainExamples, setUncertainExamples] = useState([])
     const [activeTab, setActiveTab] = useState('overview')
     const [loading, setLoading] = useState(true)
 
@@ -113,13 +114,15 @@ export default function GMMPage() {
             loadCSV('/data/evaluation.csv'),
             loadCSV('/data/gmm_parameters.csv'),
             loadCSV('/data/gmm_model_selection.csv'),
-        ]).then(([p, ba, bb, ev, gp, ms]) => {
+            loadCSV('/data/gmm_uncertain_examples.csv'),
+        ]).then(([p, ba, bb, ev, gp, ms, uncertain]) => {
             setProfiles(p)
             setBicAll(ba)
             setBicBest(bb)
             setEvaluation(ev)
             setGmmParams(gp)
             setModelSelection(ms)
+            setUncertainExamples(uncertain)
             setLoading(false)
         })
     }, [])
@@ -153,6 +156,16 @@ export default function GMMPage() {
         if (bySelectedK) return bySelectedK
         return [...evaluation].sort((a, b) => Number(b.BIC_normalized) - Number(a.BIC_normalized))[0] || {}
     }, [evaluation, selectedK])
+
+    const evaluationCards = useMemo(() => evaluation.map((ev) => {
+        const bicRow = bicBestDisplay.find((b) => Number(b.K) === Number(ev.K)) || {}
+        return {
+            ...ev,
+            displayModel: bicRow.displayModelType || ev.Model,
+            displayLogLikelihood: Number.isFinite(bicRow.displayLogLik) ? bicRow.displayLogLik : Number(ev.LogLikelihood),
+            displayNumParams: Number.isFinite(bicRow.displayNParam) ? bicRow.displayNParam : ev.Num_params,
+        }
+    }), [evaluation, bicBestDisplay])
 
     const totalObs = useMemo(
         () => profiles.reduce((s, p) => s + (Number(p.n_obs) || 0), 0),
@@ -231,7 +244,7 @@ export default function GMMPage() {
         })
     }, [profiles])
 
-    const scatterData = useMemo(() => profiles.map(p => ({
+    const scatterData = useMemo(() => profiles.map((p) => ({
         x: Number(p.mean_tapIn_hour) || 0,
         y: Number(p.mean_duration_min) || 0,
         z: Number(p.n_obs) || 0,
@@ -371,21 +384,66 @@ export default function GMMPage() {
 
                     <Section title="Model Evaluation" subtitle="Perbandingan evaluasi model GMM untuk berbagai K kandidat">
                         <div className="eval-grid">
-                            {evaluation.map(ev => (
+                            {evaluationCards.map(ev => (
                                 <div key={ev.K} className={`eval-card-v2 ${Number(ev.K) === Number(selectedK) ? 'chosen' : ''}`}>
                                     <div className="eval-card-header">
                                         <span className="eval-k-badge">K = {ev.K}</span>
                                         {Number(ev.K) === Number(selectedK) && <span className="eval-chosen-badge">Terpilih</span>}
                                     </div>
                                     <div className="eval-card-body">
-                                        <div className="eval-row"><span>Model</span><strong>{ev.Model}</strong></div>
-                                        <div className="eval-row"><span>Log-Likelihood</span><strong>{Number(ev.LogLikelihood).toLocaleString()}</strong></div>
+                                        <div className="eval-row"><span>Model</span><strong>{ev.displayModel}</strong></div>
+                                        <div className="eval-row"><span>Log-Likelihood</span><strong>{Number(ev.displayLogLikelihood).toLocaleString()}</strong></div>
                                         <div className="eval-row"><span>BIC (normalized)</span><strong>{Number(ev.BIC_normalized).toFixed(4)}</strong></div>
-                                        <div className="eval-row"><span>Parameters</span><strong>{ev.Num_params}</strong></div>
+                                        <div className="eval-row"><span>Parameters</span><strong>{ev.displayNumParams}</strong></div>
                                         <div className="eval-row"><span>Cluster Balance</span><strong>{Number(ev.Cluster_balance).toFixed(4)}</strong></div>
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    </Section>
+
+                    <Section title="Contoh Probabilistik" subtitle="10 contoh transaksi dengan probabilitas cluster">
+                        <div className="table-wrapper">
+                            <table className="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID Transaksi</th>
+                                        <th>Tap In</th>
+                                        <th>Koridor</th>
+                                        <th>Tipe Hari</th>
+                                        <th>Jam</th>
+                                        <th>Durasi</th>
+                                        <th>Hari Aktif/Bulan</th>
+                                        <th>Commuter</th>
+                                        <th>p1</th>
+                                        <th>p2</th>
+                                        <th>p3</th>
+                                        <th>p4</th>
+                                        <th>p5</th>
+                                        <th>Max Prob</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {uncertainExamples.map((r, i) => (
+                                        <tr key={r.transID || i}>
+                                            <td>{r.transID || '-'}</td>
+                                            <td>{r.tapInStopsName}</td>
+                                            <td>{r.corridorName}</td>
+                                            <td>{r.day_type}</td>
+                                            <td className="td-num">{Number(r.tapIn_hour).toFixed(2)}</td>
+                                            <td className="td-num">{Number(r.duration_minutes).toFixed(2)}</td>
+                                            <td className="td-num">{Number(r.n_days_month).toFixed(0)}</td>
+                                            <td>{r.commuter_type}</td>
+                                            <td className="td-num">{Number(r.prob_cl1).toFixed(2)}</td>
+                                            <td className="td-num">{Number(r.prob_cl2).toFixed(2)}</td>
+                                            <td className="td-num">{Number(r.prob_cl3).toFixed(2)}</td>
+                                            <td className="td-num">{Number(r.prob_cl4).toFixed(2)}</td>
+                                            <td className="td-num">{Number(r.prob_cl5).toFixed(2)}</td>
+                                            <td className="td-num"><strong>{Number(r.max_prob).toFixed(2)}</strong></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </Section>
                 </>
@@ -521,17 +579,31 @@ export default function GMMPage() {
                         </div>
                     </Section>
 
-                    <Section title="Scatter: Jam Tap-In vs Durasi" subtitle="Posisi setiap cluster berdasarkan rata-rata jam tap-in dan durasi perjalanan">
+                    <Section title="Scatter: Jam Tap-In vs Durasi" subtitle="Visualisasi ringan berbasis titik pusat (centroid) tiap cluster">
                         <div className="chart-card">
                             <ResponsiveContainer width="100%" height={400}>
                                 <ScatterChart margin={{ top: 10, right: 30, left: 20, bottom: 20 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                                    <XAxis dataKey="x" name="Jam Tap-In" label={{ value: 'Rata-rata Jam Tap-In', position: 'insideBottom', offset: -10 }} />
+                                    <XAxis
+                                        dataKey="x"
+                                        name="Jam Tap-In"
+                                        type="number"
+                                        domain={[0, 24]}
+                                        ticks={[0, 4, 8, 12, 16, 20, 24]}
+                                        label={{ value: 'Rata-rata Jam Tap-In (0-24)', position: 'insideBottom', offset: -10 }}
+                                    />
                                     <YAxis dataKey="y" name="Durasi (menit)" label={{ value: 'Rata-rata Durasi (menit)', angle: -90, position: 'insideLeft' }} />
                                     <ZAxis dataKey="z" range={[200, 1500]} name="Observasi" />
                                     <Tooltip />
-                                    {scatterData.map(d => (
-                                        <Scatter key={d.cluster} name={`C${d.cluster}: ${d.label}`} data={[d]} fill={getClusterColor(d.cluster)} stroke={getClusterColor(d.cluster)} />
+                                    {scatterData.map((d) => (
+                                        <Scatter
+                                            key={d.cluster}
+                                            name={`C${d.cluster}: ${d.label}`}
+                                            data={[d]}
+                                            fill={getClusterColor(d.cluster)}
+                                            stroke={getClusterColor(d.cluster)}
+                                            isAnimationActive={false}
+                                        />
                                     ))}
                                     <Legend />
                                 </ScatterChart>

@@ -197,6 +197,14 @@ ggsave(file.path(visualisasi_dir, "05_hourly_per_cluster.png"), p5, width = 10, 
 cat("6. Evaluation Metrics...\n")
 
 eval_df <- read_csv(file.path(hasil_dir, "07_evaluation_scores.csv"), show_col_types = FALSE)
+selection_meta <- if (file.exists(selection_path)) {
+    read_csv(selection_path, show_col_types = FALSE)
+} else {
+    tibble(selected_k = selected_k, selected_model = NA_character_)
+}
+selected_eval_row <- eval_df %>% filter(K == selected_k)
+selected_eval_model <- if (nrow(selected_eval_row) > 0) selected_eval_row$Model[[1]] else NA_character_
+selected_model_label <- dplyr::coalesce(selected_eval_model, selection_meta$selected_model[[1]], "unknown")
 
 # Prepare data for plotting
 eval_plot_data <- eval_df %>%
@@ -216,7 +224,7 @@ p6 <- ggplot(eval_plot_data, aes(x = K)) +
     ) +
     labs(
         title = "Model Selection: BIC Comparison for K=4,5,6",
-        subtitle = "K=5 dipilih berdasarkan BIC dan interpretability",
+        subtitle = paste0("K=", selected_k, " dipilih | Model=", selected_model_label, " | membandingkan kandidat K=4,5,6"),
         x = "Jumlah Cluster (K)", y = "BIC (normalized)",
         color = "Metrik"
     ) +

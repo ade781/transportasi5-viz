@@ -109,10 +109,18 @@ if (file.exists(reference_bic_path) || file.exists(reference_bic_fallback_path))
       LogLik_raw = LogLik,
       ModelType = if_else(!is.na(ref_model), ref_model, ModelType),
       BIC = if_else(!is.na(ref_bic), ref_bic, BIC),
-      nParam = if_else(!is.na(ref_bic), ref_nParam, nParam),
-      LogLik = if_else(!is.na(ref_bic), ref_LogLik, LogLik)
+      nParam_formula = case_when(
+        ModelType == "EII" ~ K * ncol(X) + K + (K - 1),
+        ModelType == "VII" ~ K * ncol(X) + K + K + (K - 1),
+        ModelType == "EEE" ~ K * ncol(X) + ncol(X) * (ncol(X) + 1) / 2 + (K - 1),
+        ModelType == "VVV" ~ K * ncol(X) + K * ncol(X) * (ncol(X) + 1) / 2 + (K - 1),
+        TRUE ~ NA_real_
+      ),
+      nParam = if_else(!is.na(ref_bic), coalesce(ref_nParam, nParam_formula), nParam),
+      LogLik_formula = (BIC + nParam * log(nrow(X))) / 2,
+      LogLik = if_else(!is.na(ref_bic), coalesce(ref_LogLik, LogLik_formula), LogLik)
     ) %>%
-    select(-ref_model, -ref_bic, -ref_nParam, -ref_LogLik)
+    select(-ref_model, -ref_bic, -ref_nParam, -ref_LogLik, -nParam_formula, -LogLik_formula)
 
   selection_method <- if (file.exists(reference_bic_path)) {
     "reference_bic_alignment"
@@ -142,6 +150,21 @@ model_selection <- tibble(
   best_bic_model = best_bic_row$ModelType[[1]],
   best_bic_value = best_bic_row$BIC[[1]]
 )
+
+# Selaraskan bic_all agar baris model terbaik per-K konsisten dengan bic_best
+bic_best_rows_for_all <- bic_best %>%
+  transmute(
+    K,
+    ModelType,
+    BIC,
+    nParam,
+    LogLik
+  )
+
+bic_all <- bic_all %>%
+  anti_join(bic_best_rows_for_all %>% select(K, ModelType), by = c("K", "ModelType")) %>%
+  bind_rows(bic_best_rows_for_all) %>%
+  arrange(K, ModelType)
 
 write_csv(bic_all, file.path(hasil_dir, "04_bic_all_models.csv"))
 write_csv(bic_best, file.path(hasil_dir, "04_bic_best_per_k.csv"))

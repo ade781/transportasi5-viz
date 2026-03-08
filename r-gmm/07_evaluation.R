@@ -1,7 +1,9 @@
 # ==============================================================================
-# STEP 7: EVALUASI MODEL (K=4,5,6 only - SIMPLIFIED)
+# STEP 7: EVALUASI MODEL (K=4,5,6)
 # ==============================================================================
-# Deskripsi : Evaluasi kualitas clustering untuk K=4,5,6
+# Deskripsi : Evaluasi kualitas clustering GMM menggunakan metrik yang selaras
+#             dengan template skripsi: BIC, Silhouette Score, Entropy, dan
+#             Composite Score pada kandidat K=4,5,6.
 # Input     : hasil/02_feature_matrix.csv
 # Output    : hasil/07_evaluation_scores.csv
 #             visualisasi/step7/*.png
@@ -10,8 +12,10 @@
 library(readr)
 library(dplyr)
 library(mclust)
+library(cluster)
 library(ggplot2)
 library(scales)
+library(tidyr)
 
 # Set paths untuk output
 base_dir <- "C:/Users/ad/OneDrive/Dokumen/ad/COBA/transportasi5 viz/r-gmm"
@@ -44,13 +48,26 @@ if (file.exists(selection_file)) {
 }
 cat("Selected K dari step 4:", preferred_k, "\n\n")
 
+minmax_norm <- function(x) {
+    rng <- range(x, na.rm = TRUE)
+    if (!is.finite(rng[1]) || !is.finite(rng[2]) || diff(rng) == 0) {
+        return(rep(0.5, length(x)))
+    }
+    (x - rng[1]) / diff(rng)
+}
+
+sample_size <- min(10000, nrow(X))
+set.seed(12345)
+sample_idx <- sample(seq_len(nrow(X)), sample_size)
+X_sample <- X[sample_idx, , drop = FALSE]
+dist_sample <- dist(X_sample)
+
 # Evaluate K=4,5,6
 eval_results <- data.frame()
 
 for (k in c(4, 5, 6)) {
     cat(sprintf("Evaluating K=%d ...", k))
 
-    # Fit GMM dengan seed
     set.seed(12345)
     fit <- Mclust(X, G = k)
 
@@ -59,53 +76,79 @@ for (k in c(4, 5, 6)) {
         next
     }
 
-    # BIC (normalized)
+    bic_raw <- fit$bic
     bic_val <- fit$bic / nrow(X)
-
-    # Log-likelihood
     ll_val <- fit$loglik
-
-    # Model name
     model_name <- fit$modelName
 
-    # Cluster distribution
     cluster_dist <- table(fit$classification)
     cluster_balance <- sd(as.numeric(cluster_dist)) / mean(as.numeric(cluster_dist))
+
+    sil_obj <- silhouette(fit$classification[sample_idx], dist_sample)
+    silhouette_val <- mean(sil_obj[, "sil_width"])
+
+    z <- fit$z
+    entropy_row <- -rowSums(z * log(pmax(z, 1e-12)))
+    entropy_val <- mean(entropy_row / log(ncol(z)))
 
     eval_results <- rbind(eval_results, data.frame(
         K = k,
         Model = model_name,
+        BIC = round(bic_raw, 2),
         LogLikelihood = round(ll_val, 2),
         BIC_normalized = round(bic_val, 4),
         Num_params = fit$df,
         Cluster_balance = round(cluster_balance, 4),
+        Silhouette = round(silhouette_val, 4),
+        Entropy = round(entropy_val, 4),
         stringsAsFactors = FALSE
     ))
 
-    cat(sprintf(" Model=%s BIC=%.4f LL=%.0f\n", model_name, bic_val, ll_val))
+    cat(sprintf(
+        " Model=%s BIC=%.4f Sil=%.4f Ent=%.4f\n",
+        model_name, bic_val, silhouette_val, entropy_val
+    ))
 }
+
+eval_results <- eval_results %>%
+    arrange(K) %>%
+    mutate(
+        BIC_delta = BIC - lag(BIC),
+        norm_BIC = minmax_norm(BIC),
+        norm_Silhouette = minmax_norm(Silhouette),
+        norm_Entropy = minmax_norm(Entropy),
+        Composite_score = round((norm_BIC + norm_Silhouette + (1 - norm_Entropy)) / 3, 4)
+    ) %>%
+    select(
+        K, Model, BIC, BIC_delta, LogLikelihood, BIC_normalized,
+        Num_params, Cluster_balance, Silhouette, Entropy, Composite_score
+    )
 
 cat("\n", strrep("=", 60), "\n")
 cat("EVALUATION RESULTS:\n")
 cat(strrep("=", 60), "\n")
 print(eval_results)
 
-best_k_by_bic <- eval_results %>% slice_max(BIC_normalized, n = 1, with_ties = FALSE) %>% pull(K)
+best_k_by_bic <- eval_results %>% slice_max(BIC, n = 1, with_ties = FALSE) %>% pull(K)
+best_k_by_silhouette <- eval_results %>% slice_max(Silhouette, n = 1, with_ties = FALSE) %>% pull(K)
+best_k_by_composite <- eval_results %>% slice_max(Composite_score, n = 1, with_ties = FALSE) %>% pull(K)
+
 if (preferred_k %in% eval_results$K) {
     best_k <- preferred_k
     selection_basis <- "selected_k_from_step4"
 } else {
-    best_k <- best_k_by_bic
-    selection_basis <- "bic_fallback"
+    best_k <- best_k_by_composite
+    selection_basis <- "composite_fallback"
 }
 
 cat("\nINTERPRETASI:\n")
 cat(sprintf("K=%d dipilih sebagai acuan evaluasi (konsisten dengan Step 4).\n", best_k))
-cat(sprintf("- Basis seleksi: %s\n", selection_basis))
-cat(sprintf("- Best by BIC di Step 7: K=%d\n", best_k_by_bic))
-cat("- Model fit quality (BIC, LogLikelihood) tetap ditampilkan sebagai pembanding\n")
-cat("- Interpretability untuk clustering passenger types\n")
-cat("- Business relevance untuk corridor analysis\n")
+cat(sprintf("- Basis seleksi               : %s\n", selection_basis))
+cat(sprintf("- Best by BIC di Step 7       : K=%d\n", best_k_by_bic))
+cat(sprintf("- Best by Silhouette di Step 7: K=%d\n", best_k_by_silhouette))
+cat(sprintf("- Best by Composite di Step 7 : K=%d\n", best_k_by_composite))
+cat("- Composite score merangkum BIC, Silhouette, dan inverse Entropy\n")
+cat("- Interpretability tetap dipertimbangkan bersama kualitas pemisahan cluster\n")
 
 # Simpan hasil
 write_csv(eval_results, file.path(hasil_dir, "07_evaluation_scores.csv"))
@@ -146,38 +189,38 @@ ggsave(
     plot = p1, width = 9, height = 5.5, dpi = 300
 )
 
-# 2) LogLikelihood comparison
-p2 <- ggplot(eval_results, aes(x = K, y = LogLikelihood)) +
+# 2) Silhouette comparison
+p2 <- ggplot(eval_results, aes(x = K, y = Silhouette)) +
     geom_line(color = "#2C3E50", linewidth = 1) +
     geom_point(
-        aes(color = factor(K == best_k)),
+        aes(color = factor(K == best_k_by_silhouette)),
         size = 3,
         show.legend = FALSE
     ) +
     geom_text(
-        aes(label = scales::comma(round(LogLikelihood, 0))),
+        aes(label = sprintf("%.4f", Silhouette)),
         vjust = -1, size = 3.1
     ) +
     scale_color_manual(values = c("TRUE" = "#E74C3C", "FALSE" = "#2C3E50")) +
     scale_x_continuous(breaks = eval_results$K) +
     labs(
-        title = "Step 7 - LogLikelihood per K",
-        subtitle = "Semakin tinggi (kurang negatif) semakin baik",
+        title = "Step 7 - Silhouette Score per K",
+        subtitle = paste0("Semakin tinggi semakin baik | Best by Silhouette = K=", best_k_by_silhouette),
         x = "Jumlah Cluster (K)",
-        y = "LogLikelihood"
+        y = "Silhouette Score"
     ) +
     theme_eval
 
 ggsave(
-    filename = file.path(step7_viz_dir, "02_loglikelihood.png"),
+    filename = file.path(step7_viz_dir, "02_silhouette_score.png"),
     plot = p2, width = 9, height = 5.5, dpi = 300
 )
 
-# 3) Cluster balance + jumlah parameter
+# 3) Entropy + composite score
 eval_long <- eval_results %>%
-    select(K, Cluster_balance, Num_params) %>%
-    tidyr::pivot_longer(
-        cols = c(Cluster_balance, Num_params),
+    select(K, Entropy, Composite_score) %>%
+    pivot_longer(
+        cols = c(Entropy, Composite_score),
         names_to = "Metric",
         values_to = "Value"
     )
@@ -186,17 +229,17 @@ p3 <- ggplot(eval_long, aes(x = factor(K), y = Value, fill = Metric)) +
     geom_col(position = "dodge", width = 0.7) +
     scale_fill_manual(
         values = c(
-            "Cluster_balance" = "#1ABC9C",
-            "Num_params" = "#9B59B6"
+            "Entropy" = "#1ABC9C",
+            "Composite_score" = "#9B59B6"
         ),
         labels = c(
-            "Cluster_balance" = "Cluster Balance (sd/mean)",
-            "Num_params" = "Jumlah Parameter"
+            "Entropy" = "Average Entropy",
+            "Composite_score" = "Composite Score"
         )
     ) +
     labs(
-        title = "Step 7 - Kompleksitas dan Keseimbangan Cluster",
-        subtitle = "Perbandingan trade-off antar kandidat K",
+        title = "Step 7 - Entropy dan Composite Score",
+        subtitle = paste0("Composite score tertinggi pada K=", best_k_by_composite),
         x = "Jumlah Cluster (K)",
         y = "Nilai",
         fill = "Metrik"
@@ -204,11 +247,11 @@ p3 <- ggplot(eval_long, aes(x = factor(K), y = Value, fill = Metric)) +
     theme_eval
 
 ggsave(
-    filename = file.path(step7_viz_dir, "03_balance_vs_params.png"),
+    filename = file.path(step7_viz_dir, "03_entropy_vs_composite.png"),
     plot = p3, width = 9, height = 5.5, dpi = 300
 )
 
 cat("[OK] Visualisasi Step 7 disimpan di", step7_viz_dir, "\n")
 cat("     - 01_bic_normalized.png\n")
-cat("     - 02_loglikelihood.png\n")
-cat("     - 03_balance_vs_params.png\n")
+cat("     - 02_silhouette_score.png\n")
+cat("     - 03_entropy_vs_composite.png\n")
