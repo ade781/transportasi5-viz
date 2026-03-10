@@ -1,0 +1,153 @@
+Ringkasan Lengkap Hasil Analisis TransJakarta
+Tanggal ringkas: 2026-03-10
+
+Gambaran Besar
+- Pipeline analisis: data_preparation -> r-gmm -> r-arm -> viz-app.
+- Fokus utama: segmentasi perilaku penumpang (GMM) dan pola perpindahan koridor (ARM).
+
+============================================================
+1) JUMLAH DATA (END-TO-END)
+============================================================
+Data utama:
+- tj180.csv (raw) = 189.500 baris
+- data_clean.csv (clean) = 168.132 baris
+- total berkurang = 21.368 baris (sekitar 11,27%)
+
+Data pendukung:
+- datacleancoba.csv = 168.132 baris
+- data_clean_gmm.csv = 165.523 baris
+- data_halte.csv = 9.355 baris
+- data_koridor.csv = 216 baris
+
+Output antara penting:
+- r-gmm/hasil/02_feature_matrix.csv = 168.132 baris
+- r-gmm/hasil/05_cluster_assignments.csv = 168.132 baris
+- r-arm/hasil/01_transfer_base.csv = 168.132 baris
+- r-arm/hasil/02_transactions_connected.csv = 166.864 baris
+
+============================================================
+2) HASIL GMM (GAUSSIAN MIXTURE MODEL)
+============================================================
+Evaluasi kandidat K (r-gmm/hasil/07_evaluation_scores.csv):
+- K=4, Model=VII, BIC=-1881475.20, Silhouette=0.2858, Entropy=0.0659, Composite=0.0000
+- K=5, Model=VII, BIC=-1734939.87, Silhouette=0.3956, Entropy=0.0232, Composite=0.8667
+- K=6, Model=VII, BIC=-1637237.71, Silhouette=0.3388, Entropy=0.0468, Composite=0.6433
+
+Pemilihan model final:
+- r-gmm/hasil/04_model_selection.csv:
+  selected_k = 5
+  selected_model = VVV
+  selected_bic = -1244451.49
+
+Distribusi 5 cluster (r-gmm/hasil/06_cluster_profiles.csv):
+1. Cluster 1 - Commuter Sore
+   - n_obs=61.930 (36,83%)
+   - mean_tapIn_hour=18,17
+   - mean_duration_min=83,85
+   - pct_weekend=1,19%
+   - pct_commuter=100,00%
+   - top_corridor=Matraman Baru - Ancol
+
+2. Cluster 2 - Penumpang Intensif
+   - n_obs=12.489 (7,43%)
+   - mean_tapIn_hour=12,57
+   - mean_duration_min=71,40
+   - mean_n_trips=4,65
+   - mean_n_days_month=25,15
+   - pct_commuter=98,79%
+
+3. Cluster 3 - Commuter Pagi
+   - n_obs=22.838 (13,58%)
+   - mean_tapIn_hour=8,00
+   - mean_duration_min=93,80
+   - pct_weekend=6,15%
+   - pct_commuter=99,99%
+
+4. Cluster 4 - Commuter Pagi Dini
+   - n_obs=46.863 (27,87%)
+   - mean_tapIn_hour=6,89
+   - mean_duration_min=41,61
+   - pct_weekend=15,50%
+   - pct_commuter=100,00%
+
+5. Cluster 5 - Penumpang Kasual
+   - n_obs=24.012 (14,28%)
+   - mean_tapIn_hour=13,39
+   - mean_duration_min=73,16
+   - pct_weekend=59,62%
+   - pct_commuter=0,07%
+
+Inti interpretasi GMM:
+- Segmen terbesar adalah Commuter Sore dan Commuter Pagi Dini.
+- Penumpang Kasual paling kuat di pola weekend.
+- Penumpang Intensif paling tinggi intensitas trip/hari.
+
+============================================================
+3) HASIL ARM (ASSOCIATION RULE MINING)
+============================================================
+Ringkasan basis ARM (r-arm/hasil/01_data_overview.csv):
+- total_trip = 168.132
+- total_transfer_trip = 168.132
+- total_connected_transfer = 166.864
+- total_same_corridor_trip = 87.590
+- unique_users = 8.592
+- unique_corridors = 207
+- connected_pairs = 2.938
+
+Jumlah kandidat rules:
+- r-arm/hasil/03_rules_global_raw.csv = 1.775 rules
+- r-arm/hasil/03_rules_cluster_raw.csv = 5.816 rules
+
+Evaluasi global ARM (r-arm/hasil/arm_evaluation.csv):
+- connected_trip_total = 166.864
+- pair_candidate_total = 1.775
+- rules_selected_global = 49
+- rule_compression_ratio = 0,0276 (2,76%)
+- trip_coverage_by_rules_pct = 17,5850%
+- lhs_coverage_pct = 23,6715%
+- avg_support_global_pct = 0,3589%
+- avg_support_local_pct = 7,9499%
+- avg_support_degree_adj = 0,7081
+- avg_lift_local = 7,4405
+- median_lift_local = 6,4466
+- avg_lift_global = 160,1020
+
+Rules final yang dipakai dashboard:
+- r-arm/hasil/rules_all_cross.csv = 38 rules (cluster-level cross-corridor)
+- r-arm/hasil/rules_global_cross.csv = 3 rules (global cross-corridor)
+
+Ringkasan cross per cluster (r-arm/hasil/arm_summary_cross.csv):
+- Cluster 1 (Commuter Sore): n_rules=5, avg_lift=6,3601, max_lift=10,5566, avg_conf=58,4774%
+- Cluster 2 (Penumpang Intensif): n_rules=25, avg_lift=5,8844, max_lift=15,3895, avg_conf=40,5804%
+- Cluster 3 (Commuter Pagi): n_rules=3, avg_lift=6,2338, max_lift=12,7281, avg_conf=52,7195%
+- Cluster 4 (Commuter Pagi Dini): n_rules=2, avg_lift=6,6511, max_lift=7,2974, avg_conf=41,2543%
+- Cluster 5 (Penumpang Kasual): n_rules=3, avg_lift=5,1460, max_lift=7,1993, avg_conf=44,3343%
+
+Top 3 global cross-corridor rules (r-arm/hasil/rules_global_cross.csv):
+1) PGC 1 - Ancol -> Matraman Baru - Ancol
+   - count_trip=549
+   - support=0,003290
+   - confidence=0,5591
+   - lift=3,7238
+
+2) Tanjung Priok - PGC 2 -> PGC 2 - Tanjung Priok
+   - count_trip=335
+   - support=0,002008
+   - confidence=0,4311
+   - lift=5,6267
+
+3) Ciputat - CSW -> Ciputat - Kampung Rambutan
+   - count_trip=216
+   - support=0,001294
+   - confidence=0,4130
+   - lift=9,7960
+
+============================================================
+4) KESIMPULAN AKHIR
+============================================================
+- Dari 189.500 transaksi mentah, 168.132 data valid digunakan untuk analisis.
+- GMM menghasilkan 5 segmen perilaku utama penumpang; konfigurasi terbaik berada pada K=5.
+- ARM menghasilkan rule perpindahan koridor yang kuat secara asosiasi (avg_lift_local ~7,44),
+  tetapi coverage rule terpilih masih 17,58% dari connected transfer.
+- File rules_all_cross.csv yang aktif dibuka saat ini berisi 38 rules final antar-koridor
+  pada level cluster, dan sudah sinkron dengan data dashboard.

@@ -1,8 +1,9 @@
 # ==============================================================================
 # STEP 2: FEATURE ENGINEERING & STANDARDISASI
 # ==============================================================================
-# Deskripsi : Membuat fitur untuk clustering dan melakukan z-score standardisasi
-# Input     : ../data_clean.csv
+# Deskripsi : Menyusun feature matrix dari hasil normalisasi data_preparation
+# Input     : ../data_clean.csv (untuk ID)
+#             ../data_preparation/csv_outputs/STEP_07_normalized.csv
 # Output    : hasil/02_feature_matrix.csv, hasil/02_feature_stats.csv
 # ==============================================================================
 
@@ -15,63 +16,68 @@ cat("STEP 2: FEATURE ENGINEERING & STANDARDISASI\n")
 cat("=", strrep("=", 59), "\n\n")
 
 # -- Load data --
-data_path <- "C:/Users/ad/OneDrive/Dokumen/ad/COBA/transportasi5 viz/data_clean.csv"
-df <- read_csv(data_path, show_col_types = FALSE)
-cat("Data dimuat:", nrow(df), "baris\n\n")
+data_clean_path <- "C:/Users/ad/OneDrive/Dokumen/ad/COBA/transportasi5 viz/data_clean.csv"
+normalized_path <- "C:/Users/ad/OneDrive/Dokumen/ad/COBA/transportasi5 viz/data_preparation/csv_outputs/STEP_07_normalized.csv"
+
+df <- read_csv(data_clean_path, show_col_types = FALSE)
+df_norm <- read_csv(normalized_path, show_col_types = FALSE)
+cat("Data clean dimuat:", nrow(df), "baris\n")
+cat("Data normalized dimuat:", nrow(df_norm), "baris\n\n")
 
 # Set paths untuk output
 base_dir <- "C:/Users/ad/OneDrive/Dokumen/ad/COBA/transportasi5 viz/r-gmm"
 hasil_dir <- file.path(base_dir, "hasil")
 
 # ==============================================================================
-# 2a. Seleksi Fitur
+# 2a. Validasi Input
 # ==============================================================================
-# Fitur yang digunakan untuk GMM clustering:
-#   1. tapIn_hour       (kontinu) - Jam tap-in penumpang
-#   2. duration_minutes (kontinu) - Durasi perjalanan dalam menit
-#   3. n_trips          (kontinu) - Jumlah trip penumpang dalam sebulan
-#   4. n_days_month     (kontinu) - Jumlah hari aktif dalam sebulan
-#   5. is_weekend       (biner)   - Apakah perjalanan di akhir pekan
-#   6. is_commuter      (biner)   - Apakah penumpang commuter
-
-fitur_kontinu <- c("tapIn_hour", "duration_minutes", "n_trips", "n_days_month")
+fitur_kontinu_z <- c("z_tapIn_hour", "z_duration_minutes", "z_n_trips", "z_n_days_month")
 fitur_biner <- c("is_weekend", "is_commuter")
+fitur_final <- c(fitur_kontinu_z, fitur_biner)
+id_cols <- c("transID", "payCardID")
 
-cat("Fitur kontinu:", paste(fitur_kontinu, collapse = ", "), "\n")
-cat("Fitur biner  :", paste(fitur_biner, collapse = ", "), "\n\n")
-
-# ==============================================================================
-# 2b. Z-Score Standardisasi (hanya fitur kontinu)
-# ==============================================================================
-cat("Melakukan Z-score standardisasi...\n")
-
-# Hitung mean dan sd sebelum standardisasi
-feature_stats <- data.frame(
-    fitur = fitur_kontinu,
-    mean  = sapply(df[fitur_kontinu], mean, na.rm = TRUE),
-    sd    = sapply(df[fitur_kontinu], sd, na.rm = TRUE)
-)
-cat("\nStatistik fitur sebelum standardisasi:\n")
-print(feature_stats)
-
-# Standardisasi z-score: z = (x - mean) / sd
-z_names <- paste0("z_", fitur_kontinu)
-for (i in seq_along(fitur_kontinu)) {
-    col <- fitur_kontinu[i]
-    df[[z_names[i]]] <- (df[[col]] - mean(df[[col]], na.rm = TRUE)) / sd(df[[col]], na.rm = TRUE)
+missing_norm_cols <- setdiff(fitur_final, names(df_norm))
+if (length(missing_norm_cols) > 0) {
+    stop(
+        sprintf(
+            "Kolom wajib tidak ditemukan di STEP_07_normalized.csv: %s",
+            paste(missing_norm_cols, collapse = ", ")
+        )
+    )
 }
 
-cat("\nStatistik fitur setelah standardisasi (harus mean≈0, sd≈1):\n")
-for (z in z_names) {
-    cat(sprintf("  %-25s mean=%7.4f  sd=%7.4f\n", z, mean(df[[z]]), sd(df[[z]])))
+missing_id_cols <- setdiff(id_cols, names(df))
+if (length(missing_id_cols) > 0) {
+    stop(
+        sprintf(
+            "Kolom ID tidak ditemukan di data_clean.csv: %s",
+            paste(missing_id_cols, collapse = ", ")
+        )
+    )
 }
 
+if (nrow(df) != nrow(df_norm)) {
+    stop(
+        sprintf(
+            "Jumlah baris tidak sama: data_clean=%d vs normalized=%d.",
+            nrow(df), nrow(df_norm)
+        )
+    )
+}
+
+cat("Validasi input selesai.\n")
+cat("Fitur kontinu (z-score):", paste(fitur_kontinu_z, collapse = ", "), "\n")
+cat("Fitur biner            :", paste(fitur_biner, collapse = ", "), "\n\n")
+
 # ==============================================================================
-# 2c. Matriks Fitur Final
+# 2b. Susun Matriks Fitur Final
 # ==============================================================================
-# Gabungkan z-score fitur kontinu + fitur biner
-fitur_final <- c(z_names, fitur_biner)
-feature_matrix <- df[, fitur_final]
+feature_matrix <- df_norm %>% select(all_of(fitur_final))
+
+cat("Statistik fitur (cek mean/sd):\n")
+for (z in fitur_kontinu_z) {
+    cat(sprintf("  %-25s mean=%7.4f  sd=%7.4f\n", z, mean(feature_matrix[[z]]), sd(feature_matrix[[z]])))
+}
 
 cat("\nMatriks fitur untuk GMM:\n")
 cat("  Dimensi:", nrow(feature_matrix), "x", ncol(feature_matrix), "\n")
@@ -79,7 +85,7 @@ cat("  Kolom  :", paste(fitur_final, collapse = ", "), "\n")
 
 # -- Statistik lengkap untuk laporan --
 stats_full <- data.frame(
-    fitur = c(z_names, fitur_biner),
+    fitur = fitur_final,
     tipe = c(rep("kontinu", 4), rep("biner", 2)),
     min = sapply(feature_matrix, min),
     q25 = sapply(feature_matrix, quantile, 0.25),
@@ -107,7 +113,7 @@ rownames(stats_full) <- NULL
 # -- Simpan hasil --
 # Simpan feature matrix (z-score + biner) beserta ID
 output_df <- bind_cols(
-    df %>% select(transID, payCardID),
+    df %>% select(all_of(id_cols)),
     feature_matrix
 )
 write_csv(output_df, file.path(hasil_dir, "02_feature_matrix.csv"))
