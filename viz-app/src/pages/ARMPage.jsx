@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
     ResponsiveContainer, Cell, ScatterChart, Scatter, ZAxis,
@@ -36,6 +36,39 @@ function Section({ title, subtitle, children }) {
             {children}
         </section>
     )
+}
+
+function toFiniteNumber(v) {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+}
+
+function sharedStopDegreeMapFromHalte(halteRows) {
+    const stopToCorridors = new Map()
+    halteRows.forEach((h) => {
+        const stop = String(h.stop || '').trim()
+        const corridor = normalizeCorridor(h.corridor)
+        if (!stop || !corridor) return
+        if (!stopToCorridors.has(stop)) stopToCorridors.set(stop, new Set())
+        stopToCorridors.get(stop).add(corridor)
+    })
+
+    const neighborMap = new Map()
+    stopToCorridors.forEach((corridorsSet) => {
+        const corridors = [...corridorsSet]
+        for (let i = 0; i < corridors.length; i++) {
+            const a = corridors[i]
+            if (!neighborMap.has(a)) neighborMap.set(a, new Set())
+            for (let j = 0; j < corridors.length; j++) {
+                if (i === j) continue
+                neighborMap.get(a).add(corridors[j])
+            }
+        }
+    })
+
+    const degreeMap = new Map()
+    neighborMap.forEach((neighbors, corridor) => degreeMap.set(corridor, neighbors.size))
+    return degreeMap
 }
 
 export default function ARMPage() {
@@ -118,8 +151,55 @@ export default function ARMPage() {
     const activeSummary = ruleScope === 'cross' ? armSummary : armSummarySelf
     const activeRules = viewMode === 'global' ? rulesGlobalActive : rulesAllActive
 
+    const connectivityDegreeMap = useMemo(() => {
+        const map = new Map()
+        corridorConnectivity.forEach((c) => {
+            const lhs = normalizeCorridor(c.lhs || c['\ufefflhs'])
+            const rhs = normalizeCorridor(c.rhs || c['\ufeffrhs'])
+            if (!lhs || !rhs || lhs === rhs) return
+            if (!map.has(lhs)) map.set(lhs, new Set())
+            if (!map.has(rhs)) map.set(rhs, new Set())
+            map.get(lhs).add(rhs)
+            map.get(rhs).add(lhs)
+        })
+        const degreeMap = new Map()
+        map.forEach((neighbors, corridor) => degreeMap.set(corridor, neighbors.size))
+        return degreeMap
+    }, [corridorConnectivity])
+
+    const halteDegreeMap = useMemo(
+        () => sharedStopDegreeMapFromHalte(halteRows),
+        [halteRows]
+    )
+
+    const degreeForLhs = useCallback((row) => {
+        const lhs = normalizeCorridor(row?.lhs)
+        const csvDegree = toFiniteNumber(row?.lhs_degree)
+        if (csvDegree && csvDegree > 0) return csvDegree
+        const connDegree = toFiniteNumber(connectivityDegreeMap.get(lhs))
+        if (connDegree && connDegree > 0) return connDegree
+        const halteDegree = toFiniteNumber(halteDegreeMap.get(lhs))
+        if (halteDegree && halteDegree > 0) return halteDegree
+        return 1
+    }, [connectivityDegreeMap, halteDegreeMap])
+
+    const applyConnectivityLocalMetrics = useCallback((row) => {
+        const confidence = toFiniteNumber(row?.confidence) ?? 0
+        const degree = degreeForLhs(row)
+        const supportLocalConnected = confidence / degree
+        const liftLocalConnected = confidence * degree
+        return {
+            ...row,
+            lhs_degree_effective: degree,
+            support_local_raw: toFiniteNumber(row?.support_local) ?? null,
+            lift_raw: toFiniteNumber(row?.lift) ?? null,
+            support_local: supportLocalConnected,
+            lift: liftLocalConnected,
+        }
+    }, [degreeForLhs])
+
     const filteredRules = useMemo(() => {
-        let rules = activeRules
+        let rules = activeRules.map(applyConnectivityLocalMetrics)
         if (viewMode === 'cluster' && selectedCluster !== 'all') {
             rules = rules.filter(r => r.cluster === Number(selectedCluster))
         }
@@ -138,7 +218,7 @@ export default function ARMPage() {
             return sortDir === 'desc' ? bVal - aVal : aVal - bVal
         })
         return rules
-    }, [activeRules, selectedCluster, searchText, sortField, sortDir, viewMode, minLift, minConf])
+    }, [activeRules, applyConnectivityLocalMetrics, selectedCluster, searchText, sortField, sortDir, viewMode, minLift, minConf])
 
     const selectedRuleData = useMemo(
         () => (selectedRule !== null ? filteredRules[selectedRule] : null),
@@ -155,11 +235,13 @@ export default function ARMPage() {
         metricScope
             .filter(r => normalizeCorridor(r.rhs) === rhs)
             .forEach((r) => {
+                const degree = degreeForLhs(r)
+                const confidence = Number(r.confidence) || 0
                 const lhs = normalizeCorridor(r.lhs)
                 const row = {
-                    support: Number(r.support) || 0,
-                    confidence: Number(r.confidence) || 0,
-                    lift_local: Number(r.lift) || 0,
+                    support: confidence / degree,
+                    confidence,
+                    lift_local: confidence * degree,
                 }
                 const prev = metricsByLhs.get(lhs)
                 if (!prev || row.lift_local > prev.lift_local) metricsByLhs.set(lhs, row)
@@ -221,7 +303,7 @@ export default function ARMPage() {
                 return String(a.corridor).localeCompare(String(b.corridor))
             })
         return unique.slice(0, 5)
-    }, [selectedRuleData, corridorConnectivity, halteRows, rawGlobalMin, rawClusterMin, viewMode])
+    }, [selectedRuleData, corridorConnectivity, degreeForLhs, halteRows, rawGlobalMin, rawClusterMin, viewMode])
 
     const connectedToSameTapIn = useMemo(() => {
         if (!selectedRuleData?.lhs) return []
@@ -234,11 +316,13 @@ export default function ARMPage() {
         metricScope
             .filter(r => normalizeCorridor(r.lhs) === lhsBase)
             .forEach((r) => {
+                const degree = degreeForLhs(r)
+                const confidence = Number(r.confidence) || 0
                 const rhs = normalizeCorridor(r.rhs)
                 const row = {
-                    support: Number(r.support) || 0,
-                    confidence: Number(r.confidence) || 0,
-                    lift_local: Number(r.lift) || 0,
+                    support: confidence / degree,
+                    confidence,
+                    lift_local: confidence * degree,
                 }
                 const prev = metricsByRhs.get(rhs)
                 if (!prev || row.lift_local > prev.lift_local) metricsByRhs.set(rhs, row)
@@ -297,7 +381,7 @@ export default function ARMPage() {
                 return String(a.corridor).localeCompare(String(b.corridor))
             })
         return unique.slice(0, 5)
-    }, [selectedRuleData, corridorConnectivity, halteRows, rawGlobalMin, rawClusterMin, viewMode])
+    }, [selectedRuleData, corridorConnectivity, degreeForLhs, halteRows, rawGlobalMin, rawClusterMin, viewMode])
 
     const selfCorridorMetrics = useMemo(() => {
         if (!selectedRuleData) return []
@@ -310,12 +394,21 @@ export default function ARMPage() {
         const pickSelf = (corridor) => {
             const rows = metricScope.filter((r) => normalizeCorridor(r.lhs) === corridor && normalizeCorridor(r.rhs) === corridor)
             if (!rows.length) return null
-            const best = rows.sort((a, b) => (Number(b.lift) || 0) - (Number(a.lift) || 0))[0]
+            const scored = rows.map((r) => {
+                const degree = degreeForLhs(r)
+                const confidence = Number(r.confidence) || 0
+                return {
+                    row: r,
+                    support_local: confidence / degree,
+                    lift_local: confidence * degree,
+                }
+            })
+            const best = scored.sort((a, b) => (Number(b.lift_local) || 0) - (Number(a.lift_local) || 0))[0]
             return {
                 corridor,
-                support: Number(best.support),
-                confidence: Number(best.confidence),
-                lift_local: Number(best.lift),
+                support: Number(best.support_local),
+                confidence: Number(best.row.confidence),
+                lift_local: Number(best.lift_local),
             }
         }
 
@@ -335,7 +428,7 @@ export default function ARMPage() {
             })
         }
         return out
-    }, [selectedRuleData, rawGlobalMin, rawClusterMin, viewMode])
+    }, [selectedRuleData, degreeForLhs, rawGlobalMin, rawClusterMin, viewMode])
 
     useEffect(() => {
         if (activeTab !== 'rules') return
@@ -355,12 +448,19 @@ export default function ARMPage() {
     /* ── derived stats ── */
     const totalRulesCluster = rulesAllActive.length
     const totalRulesGlobal = rulesGlobalActive.length
+    const activeRulesWithConnectivityMetrics = useMemo(
+        () => activeRules.map(applyConnectivityLocalMetrics),
+        [activeRules, applyConnectivityLocalMetrics]
+    )
     const avgLift = useMemo(() => {
-        const rules = activeRules
+        const rules = activeRulesWithConnectivityMetrics
         if (!rules.length) return 0
         return rules.reduce((s, r) => s + (r.lift || 0), 0) / rules.length
-    }, [activeRules])
-    const maxLift = useMemo(() => Math.max(...activeRules.map(r => r.lift || 0), 0), [activeRules])
+    }, [activeRulesWithConnectivityMetrics])
+    const maxLift = useMemo(
+        () => Math.max(...activeRulesWithConnectivityMetrics.map(r => r.lift || 0), 0),
+        [activeRulesWithConnectivityMetrics]
+    )
     const evalMap = useMemo(() => Object.fromEntries(armEval.map(e => [e.metric, Number(e.value)])), [armEval])
     const filterParamMap = useMemo(
         () => Object.fromEntries(armFilterParams.map(p => [p.parameter, p.value])),
@@ -414,13 +514,13 @@ export default function ARMPage() {
             { range: '20-30', min: 20, max: 30, count: 0 },
             { range: '30+', min: 30, max: Infinity, count: 0 },
         ]
-        activeRules.forEach(r => {
+        activeRulesWithConnectivityMetrics.forEach(r => {
             const l = r.lift || 0
             const bin = bins.find(b => l >= b.min && l < b.max)
             if (bin) bin.count++
         })
         return bins
-    }, [activeRules])
+    }, [activeRulesWithConnectivityMetrics])
 
     // Top corridors by frequency in rules
     const topCorridors = useMemo(() => {
@@ -874,12 +974,12 @@ export default function ARMPage() {
                                     <div className="rdp-metric">
                                         <span className="rdp-metric-label">Support Lokal</span>
                                         <span className="rdp-metric-val">{((filteredRules[selectedRule].support_local || 0) * 100).toFixed(2)}%</span>
-                                        <span className="rdp-metric-desc">Porsi trip LHS yang menuju RHS (tergantung konektivitas koridor LHS)</span>
+                                        <span className="rdp-metric-desc">Confidence dibagi jumlah koridor tetangga LHS (degree-adjusted local support)</span>
                                     </div>
                                     <div className="rdp-metric">
                                         <span className="rdp-metric-label">Lift Lokal</span>
                                         <span className="rdp-metric-val">{filteredRules[selectedRule].lift?.toFixed(3)}</span>
-                                        <span className="rdp-metric-desc">Rasio terhadap baseline tetangga koridor LHS ({'>'}1 = lebih kuat dari ekspektasi lokal)</span>
+                                        <span className="rdp-metric-desc">Confidence dikali jumlah koridor tetangga LHS ({'>'}1 = lebih kuat dari baseline konektivitas)</span>
                                     </div>
                                     <div className="rdp-metric">
                                         <span className="rdp-metric-label">Trips</span>

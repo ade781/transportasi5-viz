@@ -94,50 +94,280 @@ const ROUTE_LINE_LAYER = {
     layout: { 'line-join': 'round', 'line-cap': 'round' },
     paint: { 'line-color': ['get', 'color'], 'line-width': 5, 'line-opacity': 0.95 }
 }
-const ROUTE_ARROW_LAYER = {
-    id: 'route-arrows', type: 'line',
-    layout: { 'line-join': 'round', 'line-cap': 'butt' },
-    paint: { 'line-color': '#ffffff', 'line-width': 2, 'line-dasharray': [0, 3, 1, 3], 'line-opacity': 0.7 }
+const ROUTING_BASE_URLS = [
+    'https://router.project-osrm.org/route/v1/driving',
+    'https://routing.openstreetmap.de/routed-car/route/v1/driving',
+]
+const OSRM_REQUEST_TIMEOUT_MS = 8000
+const OSRM_RETRY_COUNT = 1
+const OSRM_CHUNK_WAYPOINTS = 8
+const ROUTE_CACHE_STORAGE_KEY = 'viz_route_cache_v1'
+const ROUTE_CACHE_MAX_ENTRIES = 1500
+
+function isValidCoordPair(p) {
+    return Array.isArray(p) && p.length === 2
+        && Number.isFinite(Number(p[0]))
+        && Number.isFinite(Number(p[1]))
 }
 
-// Nearest-neighbor chain — traces corridor shape even when it bends/branches.
-// Starts from a consistent endpoint (most "extreme" point along PCA axis so
-// two corridors don't accidentally start from opposite ends).
-function sortByPrincipalAxis(pts) {
-    if (pts.length <= 2) return pts
-
-    // Find principal axis just to pick the starting endpoint consistently
-    const cx = pts.reduce((s, p) => s + p.longitude, 0) / pts.length
-    const cy = pts.reduce((s, p) => s + p.latitude, 0) / pts.length
-    let sxx = 0, syy = 0, sxy = 0
-    pts.forEach(p => { const dx = p.longitude - cx, dy = p.latitude - cy; sxx += dx * dx; syy += dy * dy; sxy += dx * dy })
-    let vx = 1, vy = 0
-    const diff = sxx - syy
-    if (Math.abs(diff) >= 1e-12) {
-        const lambda = (sxx + syy) / 2 + Math.sqrt((diff / 2) ** 2 + sxy ** 2)
-        vx = lambda - syy; vy = sxy
-        const mag = Math.sqrt(vx * vx + vy * vy) || 1; vx /= mag; vy /= mag
+function loadPersistentRouteCache() {
+    const cache = new globalThis.Map()
+    if (typeof window === 'undefined') return cache
+    try {
+        const raw = window.localStorage.getItem(ROUTE_CACHE_STORAGE_KEY)
+        if (!raw) return cache
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) return cache
+        parsed.forEach((entry) => {
+            if (!Array.isArray(entry) || entry.length !== 2) return
+            const [key, coords] = entry
+            if (typeof key !== 'string' || !Array.isArray(coords) || coords.length < 2) return
+            if (!coords.every(isValidCoordPair)) return
+            cache.set(key, coords)
+        })
+    } catch {
+        // ignore invalid localStorage cache payload
     }
-    const proj = p => (p.longitude - cx) * vx + (p.latitude - cy) * vy
+    return cache
+}
 
-    // Start from the point with the smallest projection (one end of the corridor)
-    const remaining = [...pts]
-    remaining.sort((a, b) => proj(a) - proj(b))
-    const chain = [remaining.shift()]
+const ROUTE_GEOMETRY_CACHE = loadPersistentRouteCache()
+let routeCachePersistTimer = null
 
-    // Nearest-neighbor greedy chain
-    while (remaining.length) {
-        const last = chain[chain.length - 1]
-        let minDist = Infinity, minIdx = 0
-        for (let i = 0; i < remaining.length; i++) {
-            const dx = remaining[i].longitude - last.longitude
-            const dy = remaining[i].latitude - last.latitude
-            const d = dx * dx + dy * dy
-            if (d < minDist) { minDist = d; minIdx = i }
+function persistRouteCacheSoon() {
+    if (typeof window === 'undefined') return
+    if (routeCachePersistTimer) return
+    routeCachePersistTimer = window.setTimeout(() => {
+        routeCachePersistTimer = null
+        try {
+            const entries = [...ROUTE_GEOMETRY_CACHE.entries()]
+            const tail = entries.slice(Math.max(0, entries.length - ROUTE_CACHE_MAX_ENTRIES))
+            window.localStorage.setItem(ROUTE_CACHE_STORAGE_KEY, JSON.stringify(tail))
+        } catch {
+            // ignore quota/security write errors
         }
-        chain.push(remaining.splice(minIdx, 1)[0])
+    }, 200)
+}
+
+function setRouteCacheEntry(key, coords) {
+    if (!key || !Array.isArray(coords) || coords.length < 2) return
+    if (ROUTE_GEOMETRY_CACHE.has(key)) ROUTE_GEOMETRY_CACHE.delete(key)
+    ROUTE_GEOMETRY_CACHE.set(key, coords)
+    while (ROUTE_GEOMETRY_CACHE.size > ROUTE_CACHE_MAX_ENTRIES) {
+        const oldestKey = ROUTE_GEOMETRY_CACHE.keys().next().value
+        if (oldestKey == null) break
+        ROUTE_GEOMETRY_CACHE.delete(oldestKey)
     }
-    return chain
+    persistRouteCacheSoon()
+}
+
+// Urutkan halte mengikuti urutan pemberhentian di data (stopSeq sebagai prioritas).
+function toFiniteNumber(value) {
+    const n = Number(value)
+    return Number.isFinite(n) ? n : null
+}
+
+function getStopOrderValue(h) {
+    const directSeq = toFiniteNumber(h.stopSeq)
+    if (directSeq !== null) return directSeq
+    const canonicalPos = toFiniteNumber(h.canonical_pos)
+    if (canonicalPos !== null) return canonicalPos
+    const seq0 = toFiniteNumber(h.seq_dir_0)
+    if (seq0 !== null) return seq0
+    const seq1 = toFiniteNumber(h.seq_dir_1)
+    if (seq1 !== null) return seq1
+    return Number.POSITIVE_INFINITY
+}
+
+function sortHalteByStopOrder(pts) {
+    return [...pts].sort((a, b) => {
+        const orderDiff = getStopOrderValue(a) - getStopOrderValue(b)
+        if (orderDiff !== 0) return orderDiff
+        return String(a.tapInStopsName || '').localeCompare(String(b.tapInStopsName || ''))
+    })
+}
+
+function dedupeConsecutiveCoords(coordinates) {
+    if (!Array.isArray(coordinates) || coordinates.length <= 1) return coordinates || []
+    const result = [coordinates[0]]
+    for (let i = 1; i < coordinates.length; i++) {
+        const [prevLng, prevLat] = result[result.length - 1]
+        const [lng, lat] = coordinates[i]
+        if (prevLng !== lng || prevLat !== lat) result.push(coordinates[i])
+    }
+    return result
+}
+
+async function fetchRoadSegment(coordinates) {
+    const cleanCoords = dedupeConsecutiveCoords(coordinates)
+    if (cleanCoords.length < 2) return cleanCoords
+
+    const coordStr = cleanCoords.map(([lng, lat]) => `${lng},${lat}`).join(';')
+    if (ROUTE_GEOMETRY_CACHE.has(coordStr)) return ROUTE_GEOMETRY_CACHE.get(coordStr)
+
+    const tryRequest = async (baseUrl, continueStraight) => {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), OSRM_REQUEST_TIMEOUT_MS)
+        try {
+            const url = `${baseUrl}/${coordStr}?overview=full&geometries=geojson&steps=false&continue_straight=${continueStraight ? 'true' : 'false'}`
+            const res = await fetch(url, { signal: controller.signal })
+            if (!res.ok) throw new Error(`OSRM request failed: ${res.status}`)
+            const data = await res.json()
+            const routed = data?.routes?.[0]?.geometry?.coordinates
+            if (!Array.isArray(routed) || routed.length < 2) throw new Error('OSRM route geometry is empty')
+            const cleanRouted = dedupeConsecutiveCoords(routed)
+            setRouteCacheEntry(coordStr, cleanRouted)
+            return cleanRouted
+        } finally {
+            clearTimeout(timeoutId)
+        }
+    }
+
+    let lastErr
+    for (let i = 0; i <= OSRM_RETRY_COUNT; i++) {
+        for (const baseUrl of ROUTING_BASE_URLS) {
+            try {
+                return await tryRequest(baseUrl, true)
+            } catch (err1) {
+                lastErr = err1
+                try {
+                    return await tryRequest(baseUrl, false)
+                } catch (err2) {
+                    lastErr = err2
+                }
+            }
+        }
+    }
+    throw lastErr
+}
+
+async function buildRoadSegmentsFromStops(stopsOrdered) {
+    const rawCoords = stopsOrdered
+        .filter(h => h.latitude != null && h.longitude != null)
+        .map(h => [h.longitude, h.latitude])
+    const baseCoords = dedupeConsecutiveCoords(rawCoords)
+
+    if (baseCoords.length < 2) return []
+
+    const chunkSize = Math.max(2, OSRM_CHUNK_WAYPOINTS)
+    const chunkSegments = []
+    for (let start = 0; start < baseCoords.length - 1; start += (chunkSize - 1)) {
+        const chunk = baseCoords.slice(start, start + chunkSize)
+        if (chunk.length < 2) break
+        try {
+            const segment = await fetchRoadSegment(chunk)
+            if (Array.isArray(segment) && segment.length >= 2) {
+                chunkSegments.push(dedupeConsecutiveCoords(segment))
+            }
+        } catch {
+            // no-op, try finer-grained fallback below
+        }
+        if (start + chunkSize >= baseCoords.length) break
+    }
+
+    // If chunk routing succeeded for this corridor, use it (fewer requests, more stable after refresh).
+    if (chunkSegments.length > 0) return chunkSegments
+
+    // Fallback: route each adjacent halte pair, keep only successful road segments.
+    const routedSegments = []
+    for (let i = 1; i < baseCoords.length; i++) {
+        const a = baseCoords[i - 1]
+        const b = baseCoords[i]
+        try {
+            const segment = await fetchRoadSegment([a, b])
+            if (Array.isArray(segment) && segment.length >= 2) {
+                routedSegments.push(dedupeConsecutiveCoords(segment))
+            }
+        } catch {
+            // skip failed segment so route is never drawn as straight "nearest-point" line
+        }
+    }
+
+    return routedSegments
+}
+
+function getSegmentKey(a, b, precision = 5) {
+    const norm = ([lng, lat]) => `${Number(lng).toFixed(precision)},${Number(lat).toFixed(precision)}`
+    const aKey = norm(a)
+    const bKey = norm(b)
+    return aKey < bKey ? `${aKey}|${bKey}` : `${bKey}|${aKey}`
+}
+
+function collectSegmentKeys(coords, precision = 5) {
+    const keys = new Set()
+    for (let i = 1; i < coords.length; i++) {
+        keys.add(getSegmentKey(coords[i - 1], coords[i], precision))
+    }
+    return keys
+}
+
+function normalizeRouteSegments(route) {
+    if (!Array.isArray(route) || route.length === 0) return []
+    const first = route[0]
+    if (Array.isArray(first) && typeof first[0] === 'number') return [route]
+    return route
+        .filter((seg) => Array.isArray(seg) && seg.length >= 2)
+        .map((seg) => dedupeConsecutiveCoords(seg))
+}
+
+function splitRouteBySharedSegments(coords, isSharedSegment, ownColor, includeSharedSegments = true) {
+    if (!Array.isArray(coords) || coords.length < 2) return []
+    const features = []
+    let currentCoords = [coords[0]]
+    let currentShared = isSharedSegment(coords[0], coords[1])
+
+    for (let i = 1; i < coords.length; i++) {
+        const prev = coords[i - 1]
+        const curr = coords[i]
+        const segShared = isSharedSegment(prev, curr)
+        if (segShared === currentShared) {
+            currentCoords.push(curr)
+            continue
+        }
+
+        if (!currentShared || includeSharedSegments) {
+            features.push({
+                type: 'Feature',
+                geometry: { type: 'LineString', coordinates: currentCoords },
+                properties: { color: currentShared ? SHARED_COLOR : ownColor }
+            })
+        }
+        currentCoords = [prev, curr]
+        currentShared = segShared
+    }
+
+    if ((!currentShared || includeSharedSegments) && currentCoords.length >= 2) {
+        features.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: currentCoords },
+            properties: { color: currentShared ? SHARED_COLOR : ownColor }
+        })
+    }
+
+    return features
+}
+
+function buildTwoCorridorRouteFeatures(lhsCoords, rhsCoords, precision = 5) {
+    const lhsSegments = normalizeRouteSegments(lhsCoords)
+    const rhsSegments = normalizeRouteSegments(rhsCoords)
+    const lhsKeys = new Set()
+    const rhsKeys = new Set()
+    lhsSegments.forEach((seg) => {
+        collectSegmentKeys(seg, precision).forEach((k) => lhsKeys.add(k))
+    })
+    rhsSegments.forEach((seg) => {
+        collectSegmentKeys(seg, precision).forEach((k) => rhsKeys.add(k))
+    })
+    const sharedKeys = new Set([...lhsKeys].filter(k => rhsKeys.has(k)))
+    const isSharedSegment = (a, b) => sharedKeys.has(getSegmentKey(a, b, precision))
+
+    const lhsFeatures = lhsSegments.flatMap((seg) =>
+        splitRouteBySharedSegments(seg, isSharedSegment, CORRIDOR_A_COLOR, true)
+    )
+    const rhsFeatures = rhsSegments.flatMap((seg) =>
+        splitRouteBySharedSegments(seg, isSharedSegment, CORRIDOR_B_COLOR, false)
+    )
+    return [...lhsFeatures, ...rhsFeatures]
 }
 
 export default function MapPage() {
@@ -167,6 +397,7 @@ export default function MapPage() {
     const [mapStyleKey, setMapStyleKey] = useState('positron')
     const [displayMode, setDisplayMode] = useState('points') // 'points' | 'heatmap' | 'clusters'
     const [viewState, setViewState] = useState({ longitude: 106.85, latitude: -6.2, zoom: 11 })
+    const [routeGeoJSON, setRouteGeoJSON] = useState(null)
 
     const [loading, setLoading] = useState(true)
 
@@ -222,12 +453,12 @@ export default function MapPage() {
     /* ── halte for the selected rule's two corridors ── */
     const ruleHalteLHS = useMemo(() => {
         if (!selectedRule) return []
-        return halte.filter(h => h.corridorName === selectedRule.lhs)
+        return sortHalteByStopOrder(halte.filter(h => h.corridorName === selectedRule.lhs))
     }, [halte, selectedRule])
 
     const ruleHalteRHS = useMemo(() => {
         if (!selectedRule) return []
-        return halte.filter(h => h.corridorName === selectedRule.rhs)
+        return sortHalteByStopOrder(halte.filter(h => h.corridorName === selectedRule.rhs))
     }, [halte, selectedRule])
 
     const sharedHalte = useMemo(() => {
@@ -339,20 +570,34 @@ export default function MapPage() {
         )
     }, [displayedHalte])
 
-    /* ── route GeoJSON for selected rule corridors ── */
-    const routeGeoJSON = useMemo(() => {
-        if (!selectedRule) return null
-        const makeFeature = (pts, color) => {
-            const valid = pts.filter(h => h.latitude && h.longitude)
-            if (valid.length < 2) return null
-            const sorted = sortByPrincipalAxis(valid)
-            return { type: 'Feature', geometry: { type: 'LineString', coordinates: sorted.map(h => [h.longitude, h.latitude]) }, properties: { color } }
+    /* ── route GeoJSON for selected rule corridors (follow roads via OSRM) ── */
+    useEffect(() => {
+        let cancelled = false
+
+        if (!selectedRule) {
+            setRouteGeoJSON(null)
+            return () => { }
         }
-        const features = [
-            makeFeature(ruleHalteLHS, CORRIDOR_A_COLOR),
-            makeFeature(ruleHalteRHS, CORRIDOR_B_COLOR),
-        ].filter(Boolean)
-        return { type: 'FeatureCollection', features }
+        setRouteGeoJSON(null)
+
+        const buildRoute = async () => {
+            // Sequential to reduce burst requests to public OSRM and lower timeout risk.
+            const lhsRoadCoords = await buildRoadSegmentsFromStops(ruleHalteLHS)
+            const rhsRoadCoords = await buildRoadSegmentsFromStops(ruleHalteRHS)
+            if (cancelled) return
+
+            const features = buildTwoCorridorRouteFeatures(lhsRoadCoords, rhsRoadCoords)
+
+            setRouteGeoJSON(features.length ? { type: 'FeatureCollection', features } : null)
+        }
+
+        buildRoute().catch(() => {
+            if (!cancelled) setRouteGeoJSON(null)
+        })
+
+        return () => {
+            cancelled = true
+        }
     }, [selectedRule, ruleHalteLHS, ruleHalteRHS])
 
     const flyToHalte = useCallback((h) => {
@@ -608,7 +853,6 @@ export default function MapPage() {
                         <Source id="route-source" type="geojson" data={routeGeoJSON}>
                             <Layer {...ROUTE_CASING_LAYER} />
                             <Layer {...ROUTE_LINE_LAYER} />
-                            <Layer {...ROUTE_ARROW_LAYER} />
                         </Source>
                     )}
 
@@ -813,7 +1057,11 @@ export default function MapPage() {
                             <div className="rs-other-halte">
                                 {halte
                                     .filter(h => h.corridorName === selectedHalte.corridorName && h.tapInStopsName !== selectedHalte.tapInStopsName)
-                                    .sort((a, b) => (b.total_penumpang_bulan || 0) - (a.total_penumpang_bulan || 0))
+                                    .sort((a, b) => {
+                                        const orderDiff = getStopOrderValue(a) - getStopOrderValue(b)
+                                        if (orderDiff !== 0) return orderDiff
+                                        return (b.total_penumpang_bulan || 0) - (a.total_penumpang_bulan || 0)
+                                    })
                                     .slice(0, 8)
                                     .map((h, i) => (
                                         <div
