@@ -40,6 +40,13 @@ venv/
 .Renviron
 
 # ------------------------------
+# Office / Local docs
+# ------------------------------
+*.docx
+~$*.docx
+tmp_skripsi/
+
+# ------------------------------
 # Node / Frontend
 # ------------------------------
 node_modules/
@@ -55,9 +62,13 @@ vite.svg
 # ------------------------------
 # Project outputs
 # ------------------------------
+data_preparation/visualiasi/
+data_preparation/visualisasi/
+r-arm/visualisasi/
 r-gmm/hasil/
 r-gmm/visualisasi/
 r-arm/hasil/
+bab 4/visualisasi/
 
 # ------------------------------
 # Data files (not tracked)
